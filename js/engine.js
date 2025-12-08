@@ -13,7 +13,7 @@ var TemplateEngine = {
   templateData: {},
   audioFile: null,
   languageDropdownInitialized: false,
-  templateList: ['template1', 'template2', 'template3'], // Auto-update: Add new template names here (without .html)
+  templateList: ['template1', 'template2', 'template3','template4'], // Auto-update: Add new template names here (without .html)
   
   /**
    * Initialize the template engine
