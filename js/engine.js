@@ -404,11 +404,15 @@ var TemplateEngine = {
         return;
       }
       
-      // Handle color inputs
+      // Handle color inputs - NEVER set text content, only styles
       if (inputType === 'color') {
         // Background colors: ends with 'Bg' or contains 'BgColor' or 'Background'
         if (fieldName.endsWith('Bg') || fieldName.includes('BgColor') || fieldName.includes('Background')) {
           element.style.backgroundColor = value;
+          // Remove any hex code text that might be showing
+          if (element.textContent && element.textContent.match(/^#[0-9a-fA-F]{3,6}$/)) {
+            element.textContent = '';
+          }
           return;
         }
         // Text colors: ends with 'Color' or contains 'TextColor'
@@ -418,6 +422,10 @@ var TemplateEngine = {
           var childTextElements = element.querySelectorAll('.header-main, .header-sub, .subtitle-text, .footer-text, [class*="text"], [class*="title"]');
           childTextElements.forEach(function(textEl) {
             textEl.style.color = value;
+            // Remove any hex code text from children too
+            if (textEl.textContent && textEl.textContent.match(/^#[0-9a-fA-F]{3,6}$/)) {
+              textEl.textContent = '';
+            }
           });
           return;
         }
@@ -650,6 +658,11 @@ var TemplateEngine = {
           return; // Skip file paths
         }
         
+        // Skip hex color codes (they should only be used for styles, not text)
+        if (typeof value === 'string' && value.match(/^#[0-9a-fA-F]{3,6}$/)) {
+          return; // Skip hex codes as text content
+        }
+        
         element.textContent = value;
         // Also try innerHTML for HTML content (but be careful)
         if (value && value.includes('<')) {
@@ -749,15 +762,31 @@ var TemplateEngine = {
       TemplateEngine.updatePreview(fieldName, value);
     });
     
-    // Remove any file path text overlays that might be showing
+    // Remove any file path text overlays and hex codes that might be showing
     var allElements = container.querySelectorAll('.preview-panel *');
     allElements.forEach(function(el) {
       var text = el.textContent || '';
+      
+      // Remove file paths
       if ((text.includes('fakepath') || text.includes('C:\\') || 
            text.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i)) && 
           el.tagName !== 'INPUT' && el.tagName !== 'LABEL') {
         var dataField = el.getAttribute('data-field');
         if (!dataField || dataField.includes('thumbnail') || dataField.includes('image')) {
+          el.style.display = 'none';
+          el.textContent = '';
+          el.innerHTML = '';
+        }
+      }
+      
+      // Remove hex color codes showing as text (like #00000, #2c5f8d, #8b2e2e)
+      if (text.match(/^#[0-9a-fA-F]{3,6}$/) && el.tagName !== 'INPUT' && el.tagName !== 'LABEL') {
+        var dataField = el.getAttribute('data-field');
+        // Only remove if it's a color field (Bg, Color) or if it's not a content field
+        if (dataField && (dataField.includes('Bg') || dataField.includes('Color'))) {
+          el.textContent = '';
+          el.innerHTML = '';
+        } else if (!dataField) {
           el.style.display = 'none';
           el.textContent = '';
           el.innerHTML = '';
