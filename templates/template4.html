@@ -402,55 +402,5 @@
       </div>
     </div>
   </div>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const inputs = document.querySelectorAll('.input-panel [data-field]');
-      
-      inputs.forEach(input => {
-        input.addEventListener('input', updateField);
-        input.addEventListener('change', updateField);
-      });
-
-      function updateField(e) {
-        const field = e.target.getAttribute('data-field');
-        const value = e.target.value;
-        const type = e.target.type;
-        
-        const targets = document.querySelectorAll('.preview-panel [data-field="' + field + '"]');
-        
-        targets.forEach(target => {
-          if (type === 'file' && e.target.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-              target.style.backgroundImage = 'url(' + event.target.result + ')';
-            };
-            reader.readAsDataURL(e.target.files[0]);
-          } else if (type === 'color') {
-            if (field.includes('Bg')) {
-              target.style.backgroundColor = value;
-            } else if (field.includes('Color')) {
-              const textElements = target.querySelectorAll('.header-main, .header-sub, .subtitle-text, .footer-text');
-              if (textElements.length > 0) {
-                textElements.forEach(el => el.style.color = value);
-              }
-            }
-          } else if (type === 'number') {
-            if (field === 'headerMainSize') {
-              target.style.fontSize = value + 'px';
-            } else if (field === 'headerSubSize') {
-              target.style.fontSize = value + 'px';
-            } else if (field === 'subtitleSize') {
-              target.style.fontSize = value + 'px';
-            } else if (field === 'footerSize') {
-              target.style.fontSize = value + 'px';
-            }
-          } else {
-            target.textContent = value;
-          }
-        });
-      }
-    });
-  </script>
 </body>
 </html>

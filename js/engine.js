@@ -317,13 +317,22 @@ var TemplateEngine = {
       
       // Setup event listeners based on input type
       if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
-        input.addEventListener('input', function() {
-          TemplateEngine.updatePreview(fieldName, input.value);
-        });
-        
+        // For number inputs, use 'input' event for real-time updates
+        if (input.type === 'number' || input.type === 'range') {
+          input.addEventListener('input', function() {
+            TemplateEngine.updatePreview(fieldName, input.value);
+          });
+        }
+        // For all inputs, also listen to 'change' event
         input.addEventListener('change', function() {
           TemplateEngine.updatePreview(fieldName, input.value);
         });
+        // For text inputs, also listen to 'input' for real-time updates
+        if (input.type === 'text' || input.type === 'textarea' || input.type === 'color') {
+          input.addEventListener('input', function() {
+            TemplateEngine.updatePreview(fieldName, input.value);
+          });
+        }
       } else if (input.tagName === 'SELECT') {
         input.addEventListener('change', function() {
           TemplateEngine.updatePreview(fieldName, input.value);
@@ -351,6 +360,41 @@ var TemplateEngine = {
     
     this.templateData[fieldName] = value;
     
+    // Find the input element to check its type
+    var inputElement = container.querySelector('input[data-field="' + fieldName + '"]');
+    var inputType = inputElement ? inputElement.type : '';
+    
+    // Handle number inputs for font sizes FIRST (they don't have matching preview elements)
+    if (inputType === 'number' && (fieldName.endsWith('Size') || fieldName.includes('FontSize'))) {
+      // Extract base field name (e.g., "headerMain" from "headerMainSize")
+      var baseFieldName = fieldName.replace(/Size$/, '').replace(/FontSize$/, '');
+      
+      // Find the preview element with the base field name
+      var textContainer = container.querySelector('[data-field="' + baseFieldName + '"]');
+      
+      if (textContainer) {
+        var sizeTarget = null;
+        // Find the specific text element inside the container
+        if (fieldName.includes('headerMain')) {
+          sizeTarget = textContainer.querySelector('.header-main') || textContainer;
+        } else if (fieldName.includes('headerSub')) {
+          sizeTarget = textContainer.querySelector('.header-sub') || textContainer;
+        } else if (fieldName.includes('subtitle')) {
+          sizeTarget = textContainer.querySelector('.subtitle-text') || textContainer;
+        } else if (fieldName.includes('footer')) {
+          sizeTarget = textContainer.querySelector('.footer-text') || textContainer;
+        } else {
+          sizeTarget = textContainer;
+        }
+        
+        if (sizeTarget) {
+          sizeTarget.style.fontSize = value + 'px';
+          return;
+        }
+      }
+      return; // Exit early for font size inputs
+    }
+    
     // Find all preview elements with matching data-field
     var previewElements = container.querySelectorAll('[data-field="' + fieldName + '"]');
     
@@ -360,27 +404,72 @@ var TemplateEngine = {
         return;
       }
       
-      // Handle style updates (colors, padding, etc.)
-      if (fieldName.includes('BgColor') || fieldName.includes('BackgroundColor')) {
-        element.style.backgroundColor = value;
-        return;
-      }
-      
-      if (fieldName.includes('TextColor') || fieldName.includes('Color')) {
-        // Check if it's a background color field (already handled above)
-        if (!fieldName.includes('Bg')) {
+      // Handle color inputs
+      if (inputType === 'color') {
+        // Background colors: ends with 'Bg' or contains 'BgColor' or 'Background'
+        if (fieldName.endsWith('Bg') || fieldName.includes('BgColor') || fieldName.includes('Background')) {
+          element.style.backgroundColor = value;
+          return;
+        }
+        // Text colors: ends with 'Color' or contains 'TextColor'
+        if (fieldName.endsWith('Color') || fieldName.includes('TextColor')) {
           element.style.color = value;
-          // Also update child text elements if they exist
-          var textElements = element.querySelectorAll('[data-field="' + fieldName.replace('Color', '') + '"]');
-          textElements.forEach(function(textEl) {
+          // Also update child text elements (common pattern: headerColor updates header-main, header-sub)
+          var childTextElements = element.querySelectorAll('.header-main, .header-sub, .subtitle-text, .footer-text, [class*="text"], [class*="title"]');
+          childTextElements.forEach(function(textEl) {
             textEl.style.color = value;
           });
+          return;
         }
+      }
+      
+      // Handle number inputs (dimensions, padding, margin, etc. - NOT font sizes, handled above)
+      if (inputType === 'number') {
+        // Width/Height: ends with 'Width' or 'Height'
+        if (fieldName.endsWith('Width')) {
+          element.style.width = value + 'px';
+          return;
+        }
+        if (fieldName.endsWith('Height')) {
+          element.style.height = value + 'px';
+          return;
+        }
+        // Padding/Margin: contains 'Padding' or 'Margin'
+        if (fieldName.includes('Padding')) {
+          element.style.padding = value + 'px';
+          return;
+        }
+        if (fieldName.includes('Margin')) {
+          element.style.margin = value + 'px';
+          return;
+        }
+      }
+      
+      // Handle file inputs (images, audio) - background images
+      if (inputType === 'file' && value && (value.startsWith('data:') || value.startsWith('blob:'))) {
+        // Check if element is a container that should show background image
+        if (element.classList.contains('video-section') || element.classList.contains('image-container') || 
+            fieldName.includes('thumbnail') || fieldName.includes('background') || fieldName.includes('image')) {
+          element.style.backgroundImage = 'url(' + value + ')';
+          element.style.backgroundSize = 'cover';
+          element.style.backgroundPosition = 'center';
+          return;
+        }
+        // Otherwise treat as img src
+        if (element.tagName === 'IMG') {
+          element.src = value;
+          return;
+        }
+      }
+      
+      // Handle style updates (padding, margin, etc.)
+      if (fieldName.includes('Padding')) {
+        element.style.padding = value;
         return;
       }
       
-      if (fieldName.includes('Padding')) {
-        element.style.padding = value;
+      if (fieldName.includes('Margin')) {
+        element.style.margin = value;
         return;
       }
       
@@ -394,8 +483,12 @@ var TemplateEngine = {
           element.src = value;
         }
       } else {
+        // Default: update text content
         element.textContent = value;
-        element.innerHTML = value; // Allow HTML content
+        // Also try innerHTML for HTML content (but be careful)
+        if (value && value.includes('<')) {
+          element.innerHTML = value;
+        }
       }
     });
   },
