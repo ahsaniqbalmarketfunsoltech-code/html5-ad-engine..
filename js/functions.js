@@ -141,12 +141,17 @@ var ExportFunctions = {
       
       console.log('Translating: "' + text + '" from ' + (sourceLang || 'en') + ' to ' + targetLang);
       
-      // Multiple LibreTranslate public endpoints (all free, no API key)
-      // Using CORS-enabled endpoints
+      // LibreTranslate endpoints (using CORS proxy to bypass browser restrictions)
       var libretranslateEndpoints = [
         'https://libretranslate.com/translate',
-        'https://translate.argosopentech.com/translate',
-        'https://libretranslate.de/translate'
+        'https://translate.argosopentech.com/translate'
+      ];
+      
+      // CORS proxy services (free, public proxies)
+      var corsProxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://api.codetabs.com/v1/proxy?quest='
       ];
       
       var payload = {
@@ -156,11 +161,11 @@ var ExportFunctions = {
         format: 'text'
       };
       
-      // Try each LibreTranslate endpoint with retry logic
-      for (var attempt = 0; attempt < 3; attempt++) {
+      // Try direct connection first (fastest if CORS allows)
+      for (var attempt = 0; attempt < 2; attempt++) {
         for (var i = 0; i < libretranslateEndpoints.length; i++) {
           try {
-            console.log('Trying endpoint:', libretranslateEndpoints[i], '(attempt ' + (attempt + 1) + ')');
+            console.log('Trying direct endpoint:', libretranslateEndpoints[i], '(attempt ' + (attempt + 1) + ')');
             
             var response = await fetch(libretranslateEndpoints[i], {
               method: 'POST',
@@ -172,53 +177,105 @@ var ExportFunctions = {
               mode: 'cors'
             });
             
-            console.log('Response status:', response.status, 'for', libretranslateEndpoints[i]);
-            
             if (response.ok) {
               var result = await response.json();
-              console.log('Translation response:', result);
               
               if (result.translatedText) {
                 var translated = result.translatedText.trim();
-                // Clean up common issues
                 translated = translated.replace(/^["']+|["']+$/g, '').trim();
                 
                 if (translated !== text && translated.trim() !== '' && translated.length > 0) {
-                  console.log('✓ Translation successful (LibreTranslate): "' + text + '" -> "' + translated + '"');
+                  console.log('✓ Translation successful (direct): "' + text + '" -> "' + translated + '"');
                   return translated;
-                } else {
-                  console.warn('Translation returned same/empty text');
                 }
-              } else {
-                console.warn('No translatedText in response:', result);
               }
             } else if (response.status === 429) {
-              // Rate limited - wait and retry
-              console.log('Rate limited (429), waiting 2 seconds before retry...');
               await new Promise(resolve => setTimeout(resolve, 2000));
               continue;
-            } else {
-              var errorText = await response.text().catch(function() { return 'Unknown error'; });
-              console.warn('API returned status', response.status, ':', errorText.substring(0, 100));
             }
           } catch (error) {
-            console.warn('LibreTranslate endpoint ' + libretranslateEndpoints[i] + ' failed:', error.message);
-            // Try next endpoint
+            // CORS error expected, will try proxy next
             continue;
           }
         }
-        
-        // If all endpoints failed, wait before retry
-        if (attempt < 2) {
-          var waitTime = (attempt + 1) * 1000; // 1s, 2s delays
-          console.log('All endpoints failed, waiting ' + waitTime + 'ms before retry...');
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
+      // If direct connection failed (CORS), try with CORS proxy
+      console.log('Direct connection failed (CORS), trying CORS proxy...');
+      
+      for (var proxyIdx = 0; proxyIdx < corsProxies.length; proxyIdx++) {
+        for (var endpointIdx = 0; endpointIdx < libretranslateEndpoints.length; endpointIdx++) {
+          try {
+            var proxyUrl = corsProxies[proxyIdx];
+            var targetUrl = libretranslateEndpoints[endpointIdx];
+            var fullUrl = proxyUrl + encodeURIComponent(targetUrl);
+            
+            console.log('Trying CORS proxy:', proxyUrl, '->', targetUrl);
+            
+            var response = await fetch(fullUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            });
+            
+            if (response.ok) {
+              var result = await response.json();
+              
+              if (result.translatedText) {
+                var translated = result.translatedText.trim();
+                translated = translated.replace(/^["']+|["']+$/g, '').trim();
+                
+                if (translated !== text && translated.trim() !== '' && translated.length > 0) {
+                  console.log('✓ Translation successful (via proxy): "' + text + '" -> "' + translated + '"');
+                  return translated;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('Proxy attempt failed:', error.message);
+            continue;
+          }
         }
       }
       
-      // If all endpoints failed after retries, return original text
-      console.error('⚠️ All LibreTranslate endpoints failed after retries, returning original text');
-      console.error('This might be due to CORS restrictions or API downtime. Check browser console for details.');
+      // Fallback: Try Google Translate web API (no CORS, but unofficial)
+      try {
+        console.log('Trying Google Translate web API as fallback...');
+        
+        // Google Translate web API endpoint (unofficial, but works from browser)
+        var googleTranslateUrl = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' + 
+                                  encodeURIComponent(sourceLang || 'en') + 
+                                  '&tl=' + encodeURIComponent(targetLang) + 
+                                  '&dt=t&q=' + encodeURIComponent(text);
+        
+        var response = await fetch(googleTranslateUrl, {
+          method: 'GET',
+          mode: 'cors'
+        });
+        
+        if (response.ok) {
+          var result = await response.json();
+          
+          // Google Translate returns: [[["translated text",...],...],...]
+          if (result && result[0] && result[0][0] && result[0][0][0]) {
+            var translated = result[0][0][0].trim();
+            
+            if (translated !== text && translated.trim() !== '' && translated.length > 0) {
+              console.log('✓ Translation successful (Google Translate): "' + text + '" -> "' + translated + '"');
+              return translated;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Google Translate fallback failed:', error.message);
+      }
+      
+      // If all methods failed, return original text
+      console.error('⚠️ All translation methods failed (CORS restrictions). Returning original text.');
+      console.error('Note: Translation requires CORS-enabled APIs. Consider self-hosting LibreTranslate or using a backend proxy.');
       return text;
       
     } catch (error) {
