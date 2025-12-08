@@ -125,7 +125,7 @@ var ExportFunctions = {
   
   /**
    * Translate text using LibreTranslate API (free, no API key required)
-   * Uses https://libretranslate.de public API with MyMemory fallback
+   * Uses multiple LibreTranslate public instances for reliability
    */
   translateText: async function(text, targetLang, sourceLang) {
     try {
@@ -141,11 +141,12 @@ var ExportFunctions = {
       
       console.log('Translating: "' + text + '" from ' + (sourceLang || 'en') + ' to ' + targetLang);
       
-      // Try LibreTranslate endpoints first
+      // Multiple LibreTranslate public endpoints (all free, no API key)
       var libretranslateEndpoints = [
         'https://libretranslate.de/translate',
+        'https://libretranslate.com/translate',
         'https://translate.argosopentech.com/translate',
-        'https://libretranslate.com/translate'
+        'https://libretranslate.paranoid.software/translate'
       ];
       
       var payload = {
@@ -155,70 +156,52 @@ var ExportFunctions = {
         format: 'text'
       };
       
-      // Try LibreTranslate endpoints
-      for (var i = 0; i < libretranslateEndpoints.length; i++) {
-        try {
-          var response = await fetch(libretranslateEndpoints[i], {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-          });
-          
-          if (response.ok) {
-            var result = await response.json();
-            if (result.translatedText) {
-              var translated = result.translatedText.trim();
-              // Clean up common issues
-              translated = translated.replace(/^["']+|["']+$/g, '').trim();
-              
-              if (translated !== text && translated.trim() !== '' && translated.length > 0) {
-                console.log('✓ Translation successful (LibreTranslate): "' + text + '" -> "' + translated + '"');
-                return translated;
-              }
-            }
-          }
-        } catch (error) {
-          console.warn('LibreTranslate endpoint ' + libretranslateEndpoints[i] + ' failed:', error);
-          // Try next endpoint
-          continue;
-        }
-      }
-      
-      // Fallback to MyMemory Translation API
-      try {
-        console.log('Trying MyMemory API as fallback...');
-        var myMemoryUrl = 'https://api.mymemory.translated.net/get?q=' + 
-                          encodeURIComponent(text) + 
-                          '&langpair=' + (sourceLang || 'en') + '|' + targetLang;
-        
-        var response = await fetch(myMemoryUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          var result = await response.json();
-          if (result.responseStatus === 200 && result.responseData && result.responseData.translatedText) {
-            var translated = result.responseData.translatedText.trim();
-            // Clean up common issues
-            translated = translated.replace(/^["']+|["']+$/g, '').trim();
+      // Try each LibreTranslate endpoint with retry logic
+      for (var attempt = 0; attempt < 2; attempt++) {
+        for (var i = 0; i < libretranslateEndpoints.length; i++) {
+          try {
+            var response = await fetch(libretranslateEndpoints[i], {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload)
+            });
             
-            if (translated !== text && translated.trim() !== '' && translated.length > 0) {
-              console.log('✓ Translation successful (MyMemory): "' + text + '" -> "' + translated + '"');
-              return translated;
+            if (response.ok) {
+              var result = await response.json();
+              if (result.translatedText) {
+                var translated = result.translatedText.trim();
+                // Clean up common issues
+                translated = translated.replace(/^["']+|["']+$/g, '').trim();
+                
+                if (translated !== text && translated.trim() !== '' && translated.length > 0) {
+                  console.log('✓ Translation successful (LibreTranslate): "' + text + '" -> "' + translated + '"');
+                  return translated;
+                }
+              }
+            } else if (response.status === 429) {
+              // Rate limited - wait and retry
+              console.log('Rate limited, waiting 1 second before retry...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              continue;
             }
+          } catch (error) {
+            console.warn('LibreTranslate endpoint ' + libretranslateEndpoints[i] + ' failed:', error.message);
+            // Try next endpoint
+            continue;
           }
         }
-      } catch (error) {
-        console.warn('MyMemory API failed:', error);
+        
+        // If all endpoints failed, wait before retry
+        if (attempt === 0) {
+          console.log('All endpoints failed, waiting 500ms before retry...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
       
-      // If all endpoints failed, return original text
-      console.warn('⚠️ All translation endpoints failed, returning original text');
+      // If all endpoints failed after retries, return original text
+      console.warn('⚠️ All LibreTranslate endpoints failed, returning original text');
       return text;
       
     } catch (error) {
@@ -229,6 +212,7 @@ var ExportFunctions = {
   
   /**
    * Translate all text fields in template
+   * Translates ALL custom text fields - ensures nothing is skipped
    */
   translateTemplate: async function(targetLang, sourceLang) {
     var fieldValues = TemplateEngine.getFieldValues();
@@ -237,40 +221,55 @@ var ExportFunctions = {
     var translationWarnings = [];
     
     console.log('Starting translation to ' + targetLang);
-    console.log('Field values:', fieldValues);
+    console.log('Field values to translate:', fieldValues);
     
     for (var field in fieldValues) {
       var value = fieldValues[field];
-      // Only translate text (skip image/video data URLs, empty values, and URLs)
-      if (typeof value === 'string' && 
-          value.trim() !== '' && 
-          !value.startsWith('data:') && 
-          !value.startsWith('http') &&
-          !value.startsWith('blob:')) {
+      
+      // Translate ALL text content
+      // Only skip: data URLs, blob URLs, HTTP URLs, and empty strings
+      var shouldTranslate = typeof value === 'string' && 
+                            value.trim() !== '' && 
+                            !value.startsWith('data:') && 
+                            !value.startsWith('http://') &&
+                            !value.startsWith('https://') &&
+                            !value.startsWith('blob:');
+      
+      if (shouldTranslate) {
         try {
           console.log('Translating field "' + field + '": "' + value + '"');
-          var translatedValue = await this.translateText(value, targetLang, sourceLang);
+          
+          // Clean the text before translation (remove extra whitespace but keep content)
+          var cleanText = value.trim();
+          
+          // Translate the text
+          var translatedValue = await this.translateText(cleanText, targetLang, sourceLang);
           
           // Check if translation actually changed
-          if (translatedValue === value) {
+          if (translatedValue === cleanText || translatedValue === value) {
             translationWarnings.push('Field "' + field + '" was not translated (same as original)');
             console.warn('⚠️ Warning: Translation for "' + field + '" returned same text: "' + value + '"');
+            // Still use translated value (might be same for some languages)
+            translated[field] = translatedValue;
           } else {
             console.log('✓ Successfully translated: "' + value + '" -> "' + translatedValue + '"');
+            translated[field] = translatedValue;
           }
           
-          translated[field] = translatedValue;
-          console.log('Translated to: "' + translatedValue + '"');
+          // Delay between translations to avoid rate limiting (increased delay)
+          await new Promise(resolve => setTimeout(resolve, 300));
           
-          // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 150));
         } catch (error) {
           console.error('❌ Translation error for field ' + field + ':', error);
           translationErrors.push('Field "' + field + '": ' + error.message);
           translated[field] = value; // Use original on error
         }
       } else {
-        translated[field] = value; // Keep images/videos as-is
+        // Keep non-text content as-is (images, videos, URLs, empty)
+        translated[field] = value;
+        if (value && typeof value === 'string') {
+          console.log('Skipping translation for field "' + field + '" (non-text content):', value.substring(0, 50));
+        }
       }
     }
     
@@ -282,10 +281,16 @@ var ExportFunctions = {
       console.error('Translation errors:', translationErrors);
     }
     
-    console.log('Translation complete:', translated);
+    console.log('Translation complete. Translated fields:', Object.keys(translated).length);
     
     // Show alert if many translations failed
-    if (translationWarnings.length > 0 && translationWarnings.length === Object.keys(translated).length) {
+    var textFieldsCount = Object.keys(fieldValues).filter(function(field) {
+      var val = fieldValues[field];
+      return typeof val === 'string' && val.trim() !== '' && 
+             !val.startsWith('data:') && !val.startsWith('http') && !val.startsWith('blob:');
+    }).length;
+    
+    if (translationWarnings.length > 0 && translationWarnings.length === textFieldsCount) {
       alert('Warning: Translations may not be working. All text fields returned unchanged. Check browser console for details.');
     }
     
