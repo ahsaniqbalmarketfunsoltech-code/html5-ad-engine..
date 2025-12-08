@@ -125,7 +125,7 @@ var ExportFunctions = {
   
   /**
    * Translate text using LibreTranslate API (free, no API key required)
-   * Uses https://libretranslate.de public API
+   * Uses https://libretranslate.de public API with MyMemory fallback
    */
   translateText: async function(text, targetLang, sourceLang) {
     try {
@@ -141,9 +141,8 @@ var ExportFunctions = {
       
       console.log('Translating: "' + text + '" from ' + (sourceLang || 'en') + ' to ' + targetLang);
       
-      // Use LibreTranslate public API
-      // Multiple endpoints to try for reliability
-      var endpoints = [
+      // Try LibreTranslate endpoints first
+      var libretranslateEndpoints = [
         'https://libretranslate.de/translate',
         'https://translate.argosopentech.com/translate',
         'https://libretranslate.com/translate'
@@ -156,10 +155,10 @@ var ExportFunctions = {
         format: 'text'
       };
       
-      // Try each endpoint until one works
-      for (var i = 0; i < endpoints.length; i++) {
+      // Try LibreTranslate endpoints
+      for (var i = 0; i < libretranslateEndpoints.length; i++) {
         try {
-          var response = await fetch(endpoints[i], {
+          var response = await fetch(libretranslateEndpoints[i], {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -175,16 +174,47 @@ var ExportFunctions = {
               translated = translated.replace(/^["']+|["']+$/g, '').trim();
               
               if (translated !== text && translated.trim() !== '' && translated.length > 0) {
-                console.log('✓ Translation successful: "' + text + '" -> "' + translated + '"');
+                console.log('✓ Translation successful (LibreTranslate): "' + text + '" -> "' + translated + '"');
                 return translated;
               }
             }
           }
         } catch (error) {
-          console.warn('Endpoint ' + endpoints[i] + ' failed:', error);
+          console.warn('LibreTranslate endpoint ' + libretranslateEndpoints[i] + ' failed:', error);
           // Try next endpoint
           continue;
         }
+      }
+      
+      // Fallback to MyMemory Translation API
+      try {
+        console.log('Trying MyMemory API as fallback...');
+        var myMemoryUrl = 'https://api.mymemory.translated.net/get?q=' + 
+                          encodeURIComponent(text) + 
+                          '&langpair=' + (sourceLang || 'en') + '|' + targetLang;
+        
+        var response = await fetch(myMemoryUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          var result = await response.json();
+          if (result.responseStatus === 200 && result.responseData && result.responseData.translatedText) {
+            var translated = result.responseData.translatedText.trim();
+            // Clean up common issues
+            translated = translated.replace(/^["']+|["']+$/g, '').trim();
+            
+            if (translated !== text && translated.trim() !== '' && translated.length > 0) {
+              console.log('✓ Translation successful (MyMemory): "' + text + '" -> "' + translated + '"');
+              return translated;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('MyMemory API failed:', error);
       }
       
       // If all endpoints failed, return original text
@@ -707,13 +737,19 @@ var ExportFunctions = {
           // Convert data URL or blob URL to blob
           var response = await fetch(src);
           var blob = await response.blob();
-          var extension = blob.type.split('/')[1] || 'png';
-          var filename = 'image_' + assetIndex + '.' + extension;
-          assets[filename] = blob;
           
-          // Update HTML to use relative path
-          img.setAttribute('src', filename);
-          assetIndex++;
+          // Only include actual image files (skip HTML, text, etc.)
+          if (blob.type && blob.type.startsWith('image/')) {
+            var extension = blob.type.split('/')[1] || 'png';
+            var filename = 'image_' + assetIndex + '.' + extension;
+            assets[filename] = blob;
+            
+            // Update HTML to use relative path
+            img.setAttribute('src', filename);
+            assetIndex++;
+          } else {
+            console.warn('Skipping non-image file:', blob.type, 'for image:', src.substring(0, 50));
+          }
         } catch (error) {
           console.error('Error extracting image:', error);
         }
@@ -723,11 +759,17 @@ var ExportFunctions = {
           var response = await fetch(src, { mode: 'cors' });
           if (response.ok) {
             var blob = await response.blob();
-            var extension = blob.type.split('/')[1] || 'png';
-            var filename = 'image_' + assetIndex + '.' + extension;
-            assets[filename] = blob;
-            img.setAttribute('src', filename);
-            assetIndex++;
+            
+            // Only include actual image files (skip HTML, text, etc.)
+            if (blob.type && blob.type.startsWith('image/')) {
+              var extension = blob.type.split('/')[1] || 'png';
+              var filename = 'image_' + assetIndex + '.' + extension;
+              assets[filename] = blob;
+              img.setAttribute('src', filename);
+              assetIndex++;
+            } else {
+              console.warn('Skipping non-image file:', blob.type, 'for URL:', src);
+            }
           }
         } catch (error) {
           console.error('Error fetching external image:', error);
@@ -775,11 +817,17 @@ var ExportFunctions = {
         try {
           var response = await fetch(src);
           var blob = await response.blob();
-          var extension = blob.type.split('/')[1] || 'png';
-          var filename = 'image_' + assetIndex + '.' + extension;
-          assets[filename] = blob;
-          img.setAttribute('src', filename);
-          assetIndex++;
+          
+          // Only include actual image files (skip HTML, text, etc.)
+          if (blob.type && blob.type.startsWith('image/')) {
+            var extension = blob.type.split('/')[1] || 'png';
+            var filename = 'image_' + assetIndex + '.' + extension;
+            assets[filename] = blob;
+            img.setAttribute('src', filename);
+            assetIndex++;
+          } else {
+            console.warn('Skipping non-image file:', blob.type, 'for image:', src.substring(0, 50));
+          }
         } catch (error) {
           console.error('Error extracting image:', error);
         }
@@ -788,11 +836,17 @@ var ExportFunctions = {
           var response = await fetch(src, { mode: 'cors' });
           if (response.ok) {
             var blob = await response.blob();
-            var extension = blob.type.split('/')[1] || 'png';
-            var filename = 'image_' + assetIndex + '.' + extension;
-            assets[filename] = blob;
-            img.setAttribute('src', filename);
-            assetIndex++;
+            
+            // Only include actual image files (skip HTML, text, etc.)
+            if (blob.type && blob.type.startsWith('image/')) {
+              var extension = blob.type.split('/')[1] || 'png';
+              var filename = 'image_' + assetIndex + '.' + extension;
+              assets[filename] = blob;
+              img.setAttribute('src', filename);
+              assetIndex++;
+            } else {
+              console.warn('Skipping non-image file:', blob.type, 'for URL:', src);
+            }
           }
         } catch (error) {
           console.error('Error fetching external image:', error);
