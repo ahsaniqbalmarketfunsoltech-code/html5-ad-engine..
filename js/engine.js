@@ -425,22 +425,172 @@ var TemplateEngine = {
       
       // Handle number inputs (dimensions, padding, margin, etc. - NOT font sizes, handled above)
       if (inputType === 'number') {
-        // Width/Height: ends with 'Width' or 'Height'
-        if (fieldName.endsWith('Width')) {
+        // Width: ends with 'Width' or contains 'Width'
+        if (fieldName.endsWith('Width') || fieldName.includes('Width')) {
           element.style.width = value + 'px';
           return;
         }
-        if (fieldName.endsWith('Height')) {
+        // Height: ends with 'Height' or contains 'Height'
+        if (fieldName.endsWith('Height') || fieldName.includes('Height')) {
           element.style.height = value + 'px';
           return;
         }
-        // Padding/Margin: contains 'Padding' or 'Margin'
+        // Padding Top/Bottom - update specific sections
+        if (fieldName.includes('headerPaddingTop')) {
+          var header = container.querySelector('.ad-header[data-field="headerBg"]');
+          if (header) {
+            var currentPadding = window.getComputedStyle(header).padding || '12px 15px';
+            var paddingParts = currentPadding.split(' ');
+            header.style.paddingTop = value + 'px';
+            header.style.paddingBottom = paddingParts[2] || '12px';
+            header.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            header.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
+        if (fieldName.includes('headerPaddingBottom')) {
+          var header = container.querySelector('.ad-header[data-field="headerBg"]');
+          if (header) {
+            var currentPadding = window.getComputedStyle(header).padding || '12px 15px';
+            var paddingParts = currentPadding.split(' ');
+            header.style.paddingBottom = value + 'px';
+            header.style.paddingTop = paddingParts[0] || '12px';
+            header.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            header.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
+        if (fieldName.includes('subtitlePaddingTop')) {
+          var subtitle = container.querySelector('.ad-subtitle[data-field="subtitleBg"]');
+          if (subtitle) {
+            var currentPadding = window.getComputedStyle(subtitle).padding || '10px 15px';
+            var paddingParts = currentPadding.split(' ');
+            subtitle.style.paddingTop = value + 'px';
+            subtitle.style.paddingBottom = paddingParts[2] || '10px';
+            subtitle.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            subtitle.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
+        if (fieldName.includes('subtitlePaddingBottom')) {
+          var subtitle = container.querySelector('.ad-subtitle[data-field="subtitleBg"]');
+          if (subtitle) {
+            var currentPadding = window.getComputedStyle(subtitle).padding || '10px 15px';
+            var paddingParts = currentPadding.split(' ');
+            subtitle.style.paddingBottom = value + 'px';
+            subtitle.style.paddingTop = paddingParts[0] || '10px';
+            subtitle.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            subtitle.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
+        if (fieldName.includes('footerPaddingTop')) {
+          var footer = container.querySelector('.ad-footer[data-field="footerBg"]');
+          if (footer) {
+            var currentPadding = window.getComputedStyle(footer).padding || '18px 15px';
+            var paddingParts = currentPadding.split(' ');
+            footer.style.paddingTop = value + 'px';
+            footer.style.paddingBottom = paddingParts[2] || '18px';
+            footer.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            footer.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
+        if (fieldName.includes('footerPaddingBottom')) {
+          var footer = container.querySelector('.ad-footer[data-field="footerBg"]');
+          if (footer) {
+            var currentPadding = window.getComputedStyle(footer).padding || '18px 15px';
+            var paddingParts = currentPadding.split(' ');
+            footer.style.paddingBottom = value + 'px';
+            footer.style.paddingTop = paddingParts[0] || '18px';
+            footer.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
+            footer.style.paddingRight = paddingParts[1] || '15px';
+          }
+          return;
+        }
         if (fieldName.includes('Padding')) {
           element.style.padding = value + 'px';
           return;
         }
+        // Margin
         if (fieldName.includes('Margin')) {
           element.style.margin = value + 'px';
+          return;
+        }
+        // Button sizes - handle data-size attribute (these don't have matching data-field)
+        if (fieldName.includes('playButtonSize') || fieldName.includes('PlayButtonSize')) {
+          var playButtons = container.querySelectorAll('.play-button[data-size="playButtonSize"]');
+          playButtons.forEach(function(btn) {
+            btn.style.width = value + 'px';
+            btn.style.height = value + 'px';
+          });
+          // Also update play icon size proportionally
+          var playIcons = container.querySelectorAll('.play-icon');
+          playIcons.forEach(function(icon) {
+            var iconSize = Math.min(value * 0.25, 22);
+            icon.style.borderLeftWidth = iconSize + 'px';
+            icon.style.borderTopWidth = (iconSize * 0.6) + 'px';
+            icon.style.borderBottomWidth = (iconSize * 0.6) + 'px';
+          });
+          return;
+        }
+        if (fieldName.includes('controlButtonSize') || fieldName.includes('ControlButtonSize')) {
+          var controlButtons = container.querySelectorAll('.control-btn[data-size="controlButtonSize"]');
+          controlButtons.forEach(function(btn) {
+            btn.style.width = value + 'px';
+            btn.style.height = value + 'px';
+          });
+          return;
+        }
+        // Watermark positions
+        if (fieldName.includes('watermarkTop') || fieldName.includes('WatermarkTop')) {
+          // Find watermark element and update top position
+          var watermark = container.querySelector('.watermark[data-field="watermark"]');
+          if (watermark) {
+            watermark.style.top = value + 'px';
+          }
+          return;
+        }
+        if (fieldName.includes('watermarkRight') || fieldName.includes('WatermarkRight')) {
+          // Find watermark element and update right position
+          var watermark = container.querySelector('.watermark[data-field="watermark"]');
+          if (watermark) {
+            watermark.style.right = value + 'px';
+          }
+          return;
+        }
+        if (fieldName.includes('watermarkSize') || fieldName.includes('WatermarkSize')) {
+          // Find watermark element and update font size
+          var watermark = container.querySelector('.watermark[data-field="watermark"]');
+          if (watermark) {
+            watermark.style.fontSize = value + 'px';
+          }
+          return;
+        }
+        // Video height
+        if (fieldName.includes('videoHeight') || fieldName.includes('VideoHeight')) {
+          // Find video section element
+          var videoSection = container.querySelector('.video-section');
+          if (videoSection) {
+            videoSection.style.height = value + 'px';
+          }
+          return;
+        }
+        // Rewind/Forward seconds (text content)
+        if (fieldName.includes('rewindSeconds') || fieldName.includes('RewindSeconds')) {
+          // Find rewind button and update text
+          var rewindBtn = container.querySelector('.control-btn:first-child span:last-child');
+          if (rewindBtn) {
+            rewindBtn.textContent = value;
+          }
+          return;
+        }
+        if (fieldName.includes('forwardSeconds') || fieldName.includes('ForwardSeconds')) {
+          // Find forward button and update text
+          var forwardBtn = container.querySelector('.control-btn:last-child span:first-child');
+          if (forwardBtn) {
+            forwardBtn.textContent = value;
+          }
           return;
         }
       }
