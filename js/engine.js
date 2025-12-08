@@ -402,6 +402,7 @@ var TemplateEngine = {
   
   /**
    * Handle file input (images, audio)
+   * Stores image data URL in templateData for export
    */
   handleFileInput: function(fieldName, file) {
     if (!file) return;
@@ -410,6 +411,14 @@ var TemplateEngine = {
     
     reader.onload = function(e) {
       var dataUrl = e.target.result;
+      
+      // IMPORTANT: Store in templateData FIRST before updating preview
+      // This ensures getFieldValues() can find the image
+      TemplateEngine.templateData[fieldName] = dataUrl;
+      
+      console.log('Image uploaded for field "' + fieldName + '":', dataUrl.substring(0, 50) + '...');
+      
+      // Update preview to show the image
       TemplateEngine.updatePreview(fieldName, dataUrl);
       
       // Check if it's an audio file
@@ -420,6 +429,11 @@ var TemplateEngine = {
           videoBtn.style.display = 'inline-block';
         }
       }
+    };
+    
+    reader.onerror = function(error) {
+      console.error('Error reading file:', error);
+      alert('Error reading file. Please try again.');
     };
     
     if (file.type.startsWith('image/')) {
@@ -452,6 +466,7 @@ var TemplateEngine = {
   
   /**
    * Get all field values from current template
+   * Captures images from preview elements directly to ensure uploaded images are included
    */
   getFieldValues: function() {
     var container = document.getElementById('templateContainer');
@@ -466,14 +481,41 @@ var TemplateEngine = {
       
       if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA' || input.tagName === 'SELECT') {
         if (input.type === 'file') {
-          // For file inputs, get the data URL if available
+          // For file inputs, check multiple sources:
+          // 1. Check templateData (stored when file was uploaded)
+          // 2. Check preview image element src (current displayed image)
+          var imageValue = null;
+          
           if (TemplateEngine.templateData[fieldName] && 
               (TemplateEngine.templateData[fieldName].startsWith('data:') || 
                TemplateEngine.templateData[fieldName].startsWith('blob:'))) {
-            currentValues[fieldName] = TemplateEngine.templateData[fieldName];
+            imageValue = TemplateEngine.templateData[fieldName];
+          } else {
+            // Try to get from preview image element
+            var previewImg = container.querySelector('img[data-field="' + fieldName + '"]');
+            if (previewImg && previewImg.src && 
+                (previewImg.src.startsWith('data:') || previewImg.src.startsWith('blob:'))) {
+              imageValue = previewImg.src;
+            }
+          }
+          
+          if (imageValue) {
+            currentValues[fieldName] = imageValue;
           }
         } else {
           currentValues[fieldName] = input.value || '';
+        }
+      }
+    });
+    
+    // Also get values from preview elements (for images that might not have input)
+    var previewImages = container.querySelectorAll('img[data-field]');
+    previewImages.forEach(function(img) {
+      var fieldName = img.getAttribute('data-field');
+      // Only add if it's a data URL or blob URL (uploaded image)
+      if (img.src && (img.src.startsWith('data:') || img.src.startsWith('blob:'))) {
+        if (!currentValues[fieldName] || !currentValues[fieldName].startsWith('data:')) {
+          currentValues[fieldName] = img.src;
         }
       }
     });
@@ -482,9 +524,15 @@ var TemplateEngine = {
     for (var key in this.templateData) {
       if (!currentValues.hasOwnProperty(key)) {
         currentValues[key] = this.templateData[key];
+      } else if (key in this.templateData && 
+                 this.templateData[key] && 
+                 this.templateData[key].startsWith('data:')) {
+        // Prefer templateData for images (more reliable)
+        currentValues[key] = this.templateData[key];
       }
     }
     
+    console.log('Captured field values:', Object.keys(currentValues));
     return currentValues;
   },
   

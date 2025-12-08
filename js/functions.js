@@ -142,11 +142,11 @@ var ExportFunctions = {
       console.log('Translating: "' + text + '" from ' + (sourceLang || 'en') + ' to ' + targetLang);
       
       // Multiple LibreTranslate public endpoints (all free, no API key)
+      // Using CORS-enabled endpoints
       var libretranslateEndpoints = [
-        'https://libretranslate.de/translate',
         'https://libretranslate.com/translate',
         'https://translate.argosopentech.com/translate',
-        'https://libretranslate.paranoid.software/translate'
+        'https://libretranslate.de/translate'
       ];
       
       var payload = {
@@ -157,19 +157,27 @@ var ExportFunctions = {
       };
       
       // Try each LibreTranslate endpoint with retry logic
-      for (var attempt = 0; attempt < 2; attempt++) {
+      for (var attempt = 0; attempt < 3; attempt++) {
         for (var i = 0; i < libretranslateEndpoints.length; i++) {
           try {
+            console.log('Trying endpoint:', libretranslateEndpoints[i], '(attempt ' + (attempt + 1) + ')');
+            
             var response = await fetch(libretranslateEndpoints[i], {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json'
               },
-              body: JSON.stringify(payload)
+              body: JSON.stringify(payload),
+              mode: 'cors'
             });
+            
+            console.log('Response status:', response.status, 'for', libretranslateEndpoints[i]);
             
             if (response.ok) {
               var result = await response.json();
+              console.log('Translation response:', result);
+              
               if (result.translatedText) {
                 var translated = result.translatedText.trim();
                 // Clean up common issues
@@ -178,13 +186,20 @@ var ExportFunctions = {
                 if (translated !== text && translated.trim() !== '' && translated.length > 0) {
                   console.log('✓ Translation successful (LibreTranslate): "' + text + '" -> "' + translated + '"');
                   return translated;
+                } else {
+                  console.warn('Translation returned same/empty text');
                 }
+              } else {
+                console.warn('No translatedText in response:', result);
               }
             } else if (response.status === 429) {
               // Rate limited - wait and retry
-              console.log('Rate limited, waiting 1 second before retry...');
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              console.log('Rate limited (429), waiting 2 seconds before retry...');
+              await new Promise(resolve => setTimeout(resolve, 2000));
               continue;
+            } else {
+              var errorText = await response.text().catch(function() { return 'Unknown error'; });
+              console.warn('API returned status', response.status, ':', errorText.substring(0, 100));
             }
           } catch (error) {
             console.warn('LibreTranslate endpoint ' + libretranslateEndpoints[i] + ' failed:', error.message);
@@ -194,14 +209,16 @@ var ExportFunctions = {
         }
         
         // If all endpoints failed, wait before retry
-        if (attempt === 0) {
-          console.log('All endpoints failed, waiting 500ms before retry...');
-          await new Promise(resolve => setTimeout(resolve, 500));
+        if (attempt < 2) {
+          var waitTime = (attempt + 1) * 1000; // 1s, 2s delays
+          console.log('All endpoints failed, waiting ' + waitTime + 'ms before retry...');
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
       
       // If all endpoints failed after retries, return original text
-      console.warn('⚠️ All LibreTranslate endpoints failed, returning original text');
+      console.error('⚠️ All LibreTranslate endpoints failed after retries, returning original text');
+      console.error('This might be due to CORS restrictions or API downtime. Check browser console for details.');
       return text;
       
     } catch (error) {
