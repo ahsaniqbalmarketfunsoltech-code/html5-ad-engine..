@@ -425,9 +425,10 @@ var TemplateEngine = {
       
       // Handle number inputs (dimensions, padding, margin, etc. - NOT font sizes, handled above)
       if (inputType === 'number') {
-        // Width: ends with 'Width' or contains 'Width'
+        // Width: ends with 'Width' or contains 'Width' - ONLY update style, NOT text content
         if (fieldName.endsWith('Width') || fieldName.includes('Width')) {
           element.style.width = value + 'px';
+          // Don't update text content for width fields
           return;
         }
         // Height: ends with 'Height' or contains 'Height'
@@ -634,6 +635,21 @@ var TemplateEngine = {
         }
       } else {
         // Default: update text content
+        // BUT: Skip if element has width/height data-field (these are style-only)
+        if (fieldName.includes('Width') || fieldName.includes('Height') || 
+            fieldName.includes('Size') || fieldName.includes('Padding') || 
+            fieldName.includes('Margin') || fieldName.includes('Top') || 
+            fieldName.includes('Bottom') || fieldName.includes('Right') || 
+            fieldName.includes('Left')) {
+          // These are style-only fields, don't update text content
+          return;
+        }
+        
+        // Skip file paths
+        if (typeof value === 'string' && (value.includes('fakepath') || value.includes('C:\\') || value.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i))) {
+          return; // Skip file paths
+        }
+        
         element.textContent = value;
         // Also try innerHTML for HTML content (but be careful)
         if (value && value.includes('<')) {
@@ -660,6 +676,28 @@ var TemplateEngine = {
       TemplateEngine.templateData[fieldName] = dataUrl;
       
       console.log('Image uploaded for field "' + fieldName + '":', dataUrl.substring(0, 50) + '...');
+      
+      // Remove any file path text that might be showing in preview
+      var container = document.getElementById('templateContainer');
+      if (container) {
+        // Find and remove any text elements showing file paths
+        var allElements = container.querySelectorAll('.preview-panel *');
+        allElements.forEach(function(el) {
+          var text = el.textContent || '';
+          if ((text.includes('fakepath') || text.includes('C:\\') || 
+               text.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i) ||
+               (file.name && text.includes(file.name))) && 
+              el.tagName !== 'INPUT' && el.tagName !== 'LABEL') {
+            // Only remove if it's not a data-field element with actual content
+            var dataField = el.getAttribute('data-field');
+            if (!dataField || dataField === fieldName) {
+              el.style.display = 'none';
+              el.textContent = '';
+              el.innerHTML = '';
+            }
+          }
+        });
+      }
       
       // Update preview to show the image
       TemplateEngine.updatePreview(fieldName, dataUrl);
@@ -703,7 +741,28 @@ var TemplateEngine = {
         return;
       }
       
+      // Skip file inputs during initial sync (they'll be handled when file is selected)
+      if (input.type === 'file') {
+        return;
+      }
+      
       TemplateEngine.updatePreview(fieldName, value);
+    });
+    
+    // Remove any file path text overlays that might be showing
+    var allElements = container.querySelectorAll('.preview-panel *');
+    allElements.forEach(function(el) {
+      var text = el.textContent || '';
+      if ((text.includes('fakepath') || text.includes('C:\\') || 
+           text.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i)) && 
+          el.tagName !== 'INPUT' && el.tagName !== 'LABEL') {
+        var dataField = el.getAttribute('data-field');
+        if (!dataField || dataField.includes('thumbnail') || dataField.includes('image')) {
+          el.style.display = 'none';
+          el.textContent = '';
+          el.innerHTML = '';
+        }
+      }
     });
   },
   
