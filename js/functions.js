@@ -619,16 +619,54 @@ var ExportFunctions = {
       var elements = clone.querySelectorAll('[data-field="' + fieldName + '"]');
       elements.forEach(function(element) {
         if (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA' && element.tagName !== 'SELECT') {
+          var value = translatedData[fieldName];
+          
+          // Skip if value is a file path (like "C:\fakepath\...")
+          if (typeof value === 'string' && (value.includes('fakepath') || value.includes('C:\\') || value.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i))) {
+            return; // Skip file paths
+          }
+          
           if (element.tagName === 'IMG') {
-            element.src = translatedData[fieldName];
+            element.src = value;
           } else if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
-            element.src = translatedData[fieldName];
+            element.src = value;
           } else {
-            element.textContent = translatedData[fieldName];
-            element.innerHTML = translatedData[fieldName];
+            // Check if element should have background image (like video-section with thumbnail)
+            if (fieldName.includes('thumbnail') || fieldName.includes('image') || fieldName.includes('background')) {
+              if (value && (value.startsWith('data:image') || value.startsWith('blob:'))) {
+                element.style.backgroundImage = 'url(' + value + ')';
+                element.style.backgroundSize = 'cover';
+                element.style.backgroundPosition = 'center';
+                // Remove any text content that might be showing file path
+                element.textContent = '';
+                var textChildren = element.querySelectorAll('*');
+                textChildren.forEach(function(child) {
+                  if (child.textContent && (child.textContent.includes('fakepath') || child.textContent.includes('C:\\'))) {
+                    child.style.display = 'none';
+                    child.textContent = '';
+                  }
+                });
+                return;
+              }
+            }
+            element.textContent = value;
+            element.innerHTML = value;
           }
         }
       });
+    });
+    
+    // Remove any file path text overlays from the clone
+    var allTextElements = clone.querySelectorAll('*');
+    allTextElements.forEach(function(el) {
+      var text = el.textContent || '';
+      if (text.includes('fakepath') || text.includes('C:\\') || text.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Only hide if it's not a data-field element with actual content
+        if (!el.hasAttribute('data-field') || el.getAttribute('data-field') === 'thumbnail') {
+          el.style.display = 'none';
+          el.textContent = '';
+        }
+      }
     });
     
     // Extract all CSS styles from the template container
@@ -834,8 +872,10 @@ var ExportFunctions = {
    */
   extractAssetsFromDOM: async function(element) {
     var assets = {};
-    var images = element.querySelectorAll('img');
     var assetIndex = 0;
+    
+    // Extract regular <img> tags
+    var images = element.querySelectorAll('img');
     
     for (var i = 0; i < images.length; i++) {
       var img = images[i];
@@ -878,6 +918,60 @@ var ExportFunctions = {
           }
         } catch (error) {
           console.error('Error fetching external image:', error);
+        }
+      }
+    }
+    
+    // Extract background images from elements (like video-section with thumbnail)
+    var allElements = element.querySelectorAll('*');
+    for (var j = 0; j < allElements.length; j++) {
+      var el = allElements[j];
+      var bgImage = window.getComputedStyle(el).backgroundImage;
+      
+      // Check if element has background-image with data URL or blob
+      if (bgImage && bgImage !== 'none' && (bgImage.includes('data:image') || bgImage.includes('blob:'))) {
+        try {
+          // Extract URL from background-image: url("data:image/...")
+          var urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+          if (urlMatch && urlMatch[1]) {
+            var bgUrl = urlMatch[1];
+            
+            if (bgUrl.startsWith('data:image') || bgUrl.startsWith('blob:')) {
+              var response = await fetch(bgUrl);
+              var blob = await response.blob();
+              
+              if (blob.type && blob.type.startsWith('image/')) {
+                var extension = blob.type.split('/')[1] || 'png';
+                var filename = 'image_' + assetIndex + '.' + extension;
+                assets[filename] = blob;
+                
+                // Update background-image to use relative filename
+                el.style.backgroundImage = 'url(' + filename + ')';
+                assetIndex++;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error extracting background image:', error);
+        }
+      }
+    }
+    
+    // Remove any file path text overlays (elements showing file paths)
+    var textElements = element.querySelectorAll('*');
+    for (var k = 0; k < textElements.length; k++) {
+      var textEl = textElements[k];
+      var textContent = textEl.textContent || '';
+      
+      // Remove elements that show file paths (like "C:\fakepath\..." or file names)
+      if (textContent.includes('fakepath') || 
+          textContent.includes('C:\\') || 
+          textContent.match(/^[A-Z]:\\.*\.(jpg|jpeg|png|gif|webp)$/i) ||
+          (textEl.tagName === 'SPAN' && textContent.match(/\.(jpg|jpeg|png|gif|webp)$/i) && textEl.parentElement && textEl.parentElement.classList.contains('video-section'))) {
+        // Check if it's not a data-field element (don't remove actual content)
+        if (!textEl.hasAttribute('data-field') || textEl.getAttribute('data-field') === 'thumbnail') {
+          textEl.style.display = 'none';
+          textEl.textContent = '';
         }
       }
     }
