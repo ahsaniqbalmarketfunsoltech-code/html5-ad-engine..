@@ -436,12 +436,44 @@ var TemplateEngine = {
         // Width: ends with 'Width' or contains 'Width' - ONLY update style, NOT text content
         if (fieldName.endsWith('Width') || fieldName.includes('Width')) {
           element.style.width = value + 'px';
-          // Don't update text content for width fields
+          // Remove any numeric text that might be showing (like "320")
+          if (element.textContent && element.textContent.trim().match(/^\d+$/)) {
+            // Only remove if it's a pure number and element has children (means it's a container)
+            if (element.children.length > 0) {
+              var textNodes = [];
+              for (var i = 0; i < element.childNodes.length; i++) {
+                if (element.childNodes[i].nodeType === 3) { // Text node
+                  textNodes.push(element.childNodes[i]);
+                }
+              }
+              textNodes.forEach(function(node) {
+                if (node.textContent.trim().match(/^\d+$/)) {
+                  node.remove();
+                }
+              });
+            }
+          }
           return;
         }
         // Height: ends with 'Height' or contains 'Height'
         if (fieldName.endsWith('Height') || fieldName.includes('Height')) {
           element.style.height = value + 'px';
+          // Remove any numeric text that might be showing
+          if (element.textContent && element.textContent.trim().match(/^\d+$/)) {
+            if (element.children.length > 0) {
+              var textNodes = [];
+              for (var i = 0; i < element.childNodes.length; i++) {
+                if (element.childNodes[i].nodeType === 3) { // Text node
+                  textNodes.push(element.childNodes[i]);
+                }
+              }
+              textNodes.forEach(function(node) {
+                if (node.textContent.trim().match(/^\d+$/)) {
+                  node.remove();
+                }
+              });
+            }
+          }
           return;
         }
         // Padding Top/Bottom - update specific sections
@@ -663,6 +695,17 @@ var TemplateEngine = {
           return; // Skip hex codes as text content
         }
         
+        // Skip pure numeric values if element has children (it's a container, not a text element)
+        if (typeof value === 'string' && value.trim().match(/^\d+$/) && element.children.length > 0) {
+          var dataField = element.getAttribute('data-field');
+          // If it's a dimension field, don't set as text
+          if (dataField && (dataField.includes('Width') || dataField.includes('Height') || 
+              dataField.includes('Size') || dataField.includes('Padding') || 
+              dataField.includes('Margin'))) {
+            return; // Skip numeric values for dimension fields
+          }
+        }
+        
         element.textContent = value;
         // Also try innerHTML for HTML content (but be careful)
         if (value && value.includes('<')) {
@@ -790,6 +833,27 @@ var TemplateEngine = {
           el.style.display = 'none';
           el.textContent = '';
           el.innerHTML = '';
+        }
+      }
+      
+      // Remove pure numeric text (like "320") from container elements that have children
+      // This prevents width/height values from showing as text
+      if (text.match(/^\d+$/) && el.tagName !== 'INPUT' && el.tagName !== 'LABEL' && el.children.length > 0) {
+        var dataField = el.getAttribute('data-field');
+        // Remove if it's a dimension field (Width, Height) or if it's a container
+        if (dataField && (dataField.includes('Width') || dataField.includes('Height'))) {
+          // Remove text nodes that are pure numbers
+          var textNodes = [];
+          for (var i = 0; i < el.childNodes.length; i++) {
+            if (el.childNodes[i].nodeType === 3) { // Text node
+              textNodes.push(el.childNodes[i]);
+            }
+          }
+          textNodes.forEach(function(node) {
+            if (node.textContent.trim().match(/^\d+$/)) {
+              node.remove();
+            }
+          });
         }
       }
     });
