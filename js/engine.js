@@ -18,7 +18,12 @@ var TemplateEngine = {
   /**
    * Initialize the template engine
    */
-  init: function() {
+  init: async function() {
+    // Initialize template scanner/manifest system
+    if (typeof TemplateScanner !== 'undefined') {
+      await TemplateScanner.init();
+    }
+    
     this.loadTemplates();
     this.setupEventListeners();
     // Initialize dropdown after a delay to ensure DOM is ready
@@ -85,6 +90,15 @@ var TemplateEngine = {
         var numB = parseInt(b.replace(/template/i, '')) || 0;
         return numA - numB;
       });
+      
+      // Auto-scan all discovered templates and update manifest
+      if (typeof TemplateScanner !== 'undefined') {
+        TemplateScanner.scanAllTemplates(discoveredTemplates).then(function() {
+          console.log('📋 Template manifest updated with ' + discoveredTemplates.length + ' template(s)');
+        }).catch(function(error) {
+          console.warn('⚠️ Could not scan templates for manifest:', error);
+        });
+      }
       
       self.populateTemplateDropdown(discoveredTemplates);
     }).catch(function(error) {
@@ -277,6 +291,20 @@ var TemplateEngine = {
         container.innerHTML = htmlContent;
         if (sharedPanel) {
           sharedPanel.style.display = 'block';
+        }
+        
+        // Validate template structure if scanner is available
+        if (typeof TemplateScanner !== 'undefined') {
+          var validation = TemplateScanner.validateTemplateForExport(templateName);
+          if (validation && !validation.valid) {
+            console.warn('⚠️ Template validation issues:', validation.errors);
+            if (validation.errors.length > 0) {
+              console.error('❌ Template "' + templateName + '" has validation errors:', validation.errors);
+            }
+          }
+          if (validation && validation.warnings && validation.warnings.length > 0) {
+            console.warn('⚠️ Template "' + templateName + '" warnings:', validation.warnings);
+          }
         }
         
         // Initialize binding after template loads
@@ -1047,6 +1075,7 @@ var TemplateEngine = {
   /**
    * Get all field values from current template
    * Captures images from preview elements directly to ensure uploaded images are included
+   * Uses manifest to ensure all fields are captured
    */
   getFieldValues: function() {
     var container = document.getElementById('templateContainer');
@@ -1054,6 +1083,16 @@ var TemplateEngine = {
     
     var inputs = container.querySelectorAll('[data-field]');
     var currentValues = {};
+    var templateName = this.currentTemplate;
+    
+    // Get expected fields from manifest if available
+    var expectedFields = [];
+    if (typeof TemplateScanner !== 'undefined' && templateName) {
+      expectedFields = TemplateScanner.getAllFields(templateName);
+      if (expectedFields.length > 0) {
+        console.log('📋 Manifest shows ' + expectedFields.length + ' expected fields for ' + templateName);
+      }
+    }
     
     // Get current values from all input elements
     inputs.forEach(function(input) {
@@ -1064,6 +1103,7 @@ var TemplateEngine = {
           // For file inputs, check multiple sources:
           // 1. Check templateData (stored when file was uploaded)
           // 2. Check preview image element src (current displayed image)
+          // 3. Check background-image style
           var imageValue = null;
           
           if (TemplateEngine.templateData[fieldName] && 
@@ -1076,14 +1116,33 @@ var TemplateEngine = {
             if (previewImg && previewImg.src && 
                 (previewImg.src.startsWith('data:') || previewImg.src.startsWith('blob:'))) {
               imageValue = previewImg.src;
+            } else {
+              // Try to get from background-image style
+              var bgElement = container.querySelector('[data-field="' + fieldName + '"]');
+              if (bgElement) {
+                var bgImage = window.getComputedStyle(bgElement).backgroundImage;
+                if (bgImage && bgImage !== 'none' && (bgImage.includes('data:') || bgImage.includes('blob:'))) {
+                  // Extract URL from background-image: url("data:image/...")
+                  var urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+                  if (urlMatch && urlMatch[1]) {
+                    imageValue = urlMatch[1];
+                  }
+                }
+              }
             }
           }
           
           if (imageValue) {
             currentValues[fieldName] = imageValue;
+            console.log('✅ Captured image for field "' + fieldName + '"');
+          } else {
+            console.warn('⚠️ No image found for field "' + fieldName + '"');
           }
         } else {
-          currentValues[fieldName] = input.value || '';
+          var value = input.value || '';
+          if (value) {
+            currentValues[fieldName] = value;
+          }
         }
       }
     });
@@ -1096,6 +1155,25 @@ var TemplateEngine = {
       if (img.src && (img.src.startsWith('data:') || img.src.startsWith('blob:'))) {
         if (!currentValues[fieldName] || !currentValues[fieldName].startsWith('data:')) {
           currentValues[fieldName] = img.src;
+          console.log('✅ Captured image from preview element for field "' + fieldName + '"');
+        }
+      }
+    });
+    
+    // Also check background images from elements
+    var allElements = container.querySelectorAll('[data-field]');
+    allElements.forEach(function(el) {
+      var fieldName = el.getAttribute('data-field');
+      if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && el.tagName !== 'SELECT') {
+        var bgImage = window.getComputedStyle(el).backgroundImage;
+        if (bgImage && bgImage !== 'none' && (bgImage.includes('data:') || bgImage.includes('blob:'))) {
+          var urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+          if (urlMatch && urlMatch[1] && (urlMatch[1].startsWith('data:') || urlMatch[1].startsWith('blob:'))) {
+            if (!currentValues[fieldName] || !currentValues[fieldName].startsWith('data:')) {
+              currentValues[fieldName] = urlMatch[1];
+              console.log('✅ Captured background image for field "' + fieldName + '"');
+            }
+          }
         }
       }
     });
@@ -1112,7 +1190,24 @@ var TemplateEngine = {
       }
     }
     
-    console.log('Captured field values:', Object.keys(currentValues));
+    // Validate against manifest if available
+    if (expectedFields.length > 0) {
+      var missingFields = expectedFields.filter(function(field) {
+        return !currentValues.hasOwnProperty(field);
+      });
+      if (missingFields.length > 0) {
+        console.warn('⚠️ Missing values for ' + missingFields.length + ' expected field(s):', missingFields);
+      }
+      
+      var extraFields = Object.keys(currentValues).filter(function(field) {
+        return !expectedFields.includes(field);
+      });
+      if (extraFields.length > 0) {
+        console.log('ℹ️ Found ' + extraFields.length + ' extra field(s) not in manifest:', extraFields);
+      }
+    }
+    
+    console.log('✅ Captured ' + Object.keys(currentValues).length + ' field value(s):', Object.keys(currentValues));
     return currentValues;
   },
   
