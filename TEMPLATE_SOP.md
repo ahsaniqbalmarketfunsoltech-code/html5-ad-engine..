@@ -81,6 +81,21 @@
 
 **Both have `data-field="productName"`** → They're automatically connected!
 
+### 🎯 Universal Pattern System
+
+The system now supports **ANY data-field name** using intelligent patterns! You don't need to use specific field names.
+
+**📖 See `DATA_FIELD_PATTERNS.md` for complete pattern guide!**
+
+**Quick Examples:**
+- `productNameSize` → Automatically updates font size of `productName` element
+- `cardBg` → Automatically sets background color
+- `sectionPaddingTop` → Automatically sets top padding
+- `buttonWidth` → Automatically sets width
+- `logoImage` → Automatically handles image upload
+
+**The system recognizes patterns automatically - no hardcoded field names needed!**
+
 ---
 
 ## 📝 Input Types & Examples

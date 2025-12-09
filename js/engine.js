@@ -55,7 +55,7 @@ var TemplateEngine = {
     });
     
     // Also try to discover additional templates (template4, template5, etc.)
-    for (var i = 4; i <= 20; i++) {
+    for (var i = 4; i <= 100; i++) {
       (function(templateName) {
         var checkPromise = fetch('templates/' + templateName + '.html', { method: 'HEAD' })
           .then(function(response) {
@@ -353,6 +353,48 @@ var TemplateEngine = {
   
   /**
    * Update preview element when input changes
+   * 
+   * UNIVERSAL PATTERN-BASED SYSTEM - Works with ANY data-field name!
+   * 
+   * Supported Patterns (see DATA_FIELD_PATTERNS.md for details):
+   * 
+   * 1. TEXT CONTENT: Any field name (just match data-field values)
+   *    Example: productName, title, description
+   * 
+   * 2. FONT SIZES: [name]Size or [name]FontSize
+   *    Example: productTitleSize → updates productTitle element's fontSize
+   * 
+   * 3. BACKGROUND COLORS: [name]Bg, [name]BgColor, or contains Background
+   *    Example: cardBg, sectionBackground → sets backgroundColor
+   * 
+   * 4. TEXT COLORS: [name]Color or contains TextColor
+   *    Example: titleColor, buttonTextColor → sets color (and child text elements)
+   * 
+   * 5. WIDTH: [name]Width
+   *    Example: cardWidth, imageWidth → sets width
+   * 
+   * 6. HEIGHT: [name]Height (not LineHeight)
+   *    Example: sectionHeight, videoHeight → sets height
+   * 
+   * 7. PADDING: [name]Padding, [name]PaddingTop/Bottom/Left/Right
+   *    Example: cardPadding, sectionPaddingTop → sets padding
+   * 
+   * 8. MARGIN: [name]Margin, [name]MarginTop/Bottom/Left/Right
+   *    Example: cardMargin, sectionMarginTop → sets margin
+   * 
+   * 9. BUTTON SIZES: [name]ButtonSize
+   *    Example: playButtonSize, submitButtonSize → sets button width/height
+   * 
+   * 10. POSITIONS: [name]Top/Bottom/Left/Right (not Padding/Margin)
+   *     Example: logoTop, badgeRight → sets position
+   * 
+   * 11. IMAGES: Contains thumbnail/background/image/banner/logo/photo/picture
+   *     Example: productImage, backgroundThumbnail → handles image uploads
+   * 
+   * 12. TIME/SECONDS: [name]Seconds
+   *     Example: rewindSeconds, forwardSeconds → updates text content
+   * 
+   * All patterns are case-insensitive and work automatically!
    */
   updatePreview: function(fieldName, value) {
     var container = document.getElementById('templateContainer');
@@ -364,33 +406,28 @@ var TemplateEngine = {
     var inputElement = container.querySelector('input[data-field="' + fieldName + '"]');
     var inputType = inputElement ? inputElement.type : '';
     
-    // Handle number inputs for font sizes FIRST (they don't have matching preview elements)
+    // ========================================================================
+    // PATTERN 1: Font Size (works with ANY field ending in Size/FontSize)
+    // Examples: headerMainSize, productTitleSize, buttonTextFontSize, etc.
+    // ========================================================================
     if (inputType === 'number' && (fieldName.endsWith('Size') || fieldName.includes('FontSize'))) {
-      // Extract base field name (e.g., "headerMain" from "headerMainSize")
-      var baseFieldName = fieldName.replace(/Size$/, '').replace(/FontSize$/, '');
+      // Extract base field name (e.g., "productTitle" from "productTitleSize")
+      var baseFieldName = fieldName.replace(/Size$/i, '').replace(/FontSize$/i, '');
       
       // Find the preview element with the base field name
       var textContainer = container.querySelector('[data-field="' + baseFieldName + '"]');
       
       if (textContainer) {
-        var sizeTarget = null;
-        // Find the specific text element inside the container
-        if (fieldName.includes('headerMain')) {
-          sizeTarget = textContainer.querySelector('.header-main') || textContainer;
-        } else if (fieldName.includes('headerSub')) {
-          sizeTarget = textContainer.querySelector('.header-sub') || textContainer;
-        } else if (fieldName.includes('subtitle')) {
-          sizeTarget = textContainer.querySelector('.subtitle-text') || textContainer;
-        } else if (fieldName.includes('footer')) {
-          sizeTarget = textContainer.querySelector('.footer-text') || textContainer;
-        } else {
-          sizeTarget = textContainer;
-        }
+        // Try to find a child element with class matching the base name (e.g., .product-title)
+        // This handles cases like: productTitleSize -> .product-title
+        var className = baseFieldName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+        var sizeTarget = textContainer.querySelector('.' + className) || 
+                        textContainer.querySelector('[class*="' + baseFieldName.toLowerCase() + '"]') ||
+                        textContainer.querySelector('[class*="' + className + '"]') ||
+                        textContainer;
         
-        if (sizeTarget) {
-          sizeTarget.style.fontSize = value + 'px';
-          return;
-        }
+        sizeTarget.style.fontSize = value + 'px';
+        return;
       }
       return; // Exit early for font size inputs
     }
@@ -404,10 +441,14 @@ var TemplateEngine = {
         return;
       }
       
-      // Handle color inputs - NEVER set text content, only styles
+      // ========================================================================
+      // PATTERN 8: Color Inputs (works with ANY field ending in Bg/Color/Background)
+      // Examples: headerBg, productCardColor, sectionBackground, buttonTextColor, etc.
+      // ========================================================================
       if (inputType === 'color') {
         // Background colors: ends with 'Bg' or contains 'BgColor' or 'Background'
-        if (fieldName.endsWith('Bg') || fieldName.includes('BgColor') || fieldName.includes('Background')) {
+        if (fieldName.endsWith('Bg') || fieldName.includes('BgColor') || 
+            fieldName.includes('Background') || fieldName.toLowerCase().includes('background')) {
           element.style.backgroundColor = value;
           // Remove any hex code text that might be showing
           if (element.textContent && element.textContent.match(/^#[0-9a-fA-F]{3,6}$/)) {
@@ -416,15 +457,22 @@ var TemplateEngine = {
           return;
         }
         // Text colors: ends with 'Color' or contains 'TextColor'
-        if (fieldName.endsWith('Color') || fieldName.includes('TextColor')) {
+        if (fieldName.endsWith('Color') || fieldName.includes('TextColor') || 
+            fieldName.toLowerCase().includes('textcolor')) {
           element.style.color = value;
-          // Also update child text elements (common pattern: headerColor updates header-main, header-sub)
-          var childTextElements = element.querySelectorAll('.header-main, .header-sub, .subtitle-text, .footer-text, [class*="text"], [class*="title"]');
+          // Also update ALL child text elements (universal pattern)
+          var childTextElements = element.querySelectorAll(
+            '[class*="text"], [class*="title"], [class*="heading"], ' +
+            'h1, h2, h3, h4, h5, h6, p, span, div'
+          );
           childTextElements.forEach(function(textEl) {
-            textEl.style.color = value;
-            // Remove any hex code text from children too
-            if (textEl.textContent && textEl.textContent.match(/^#[0-9a-fA-F]{3,6}$/)) {
-              textEl.textContent = '';
+            // Only update if it's actually a text element (not an input)
+            if (textEl.tagName !== 'INPUT' && textEl.tagName !== 'TEXTAREA' && textEl.tagName !== 'SELECT') {
+              textEl.style.color = value;
+              // Remove any hex code text from children too
+              if (textEl.textContent && textEl.textContent.match(/^#[0-9a-fA-F]{3,6}$/)) {
+                textEl.textContent = '';
+              }
             }
           });
           return;
@@ -476,174 +524,252 @@ var TemplateEngine = {
           }
           return;
         }
-        // Padding Top/Bottom - update specific sections
-        if (fieldName.includes('headerPaddingTop')) {
-          var header = container.querySelector('.ad-header[data-field="headerBg"]');
-          if (header) {
-            var currentPadding = window.getComputedStyle(header).padding || '12px 15px';
-            var paddingParts = currentPadding.split(' ');
-            header.style.paddingTop = value + 'px';
-            header.style.paddingBottom = paddingParts[2] || '12px';
-            header.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            header.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
-        if (fieldName.includes('headerPaddingBottom')) {
-          var header = container.querySelector('.ad-header[data-field="headerBg"]');
-          if (header) {
-            var currentPadding = window.getComputedStyle(header).padding || '12px 15px';
-            var paddingParts = currentPadding.split(' ');
-            header.style.paddingBottom = value + 'px';
-            header.style.paddingTop = paddingParts[0] || '12px';
-            header.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            header.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
-        if (fieldName.includes('subtitlePaddingTop')) {
-          var subtitle = container.querySelector('.ad-subtitle[data-field="subtitleBg"]');
-          if (subtitle) {
-            var currentPadding = window.getComputedStyle(subtitle).padding || '10px 15px';
-            var paddingParts = currentPadding.split(' ');
-            subtitle.style.paddingTop = value + 'px';
-            subtitle.style.paddingBottom = paddingParts[2] || '10px';
-            subtitle.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            subtitle.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
-        if (fieldName.includes('subtitlePaddingBottom')) {
-          var subtitle = container.querySelector('.ad-subtitle[data-field="subtitleBg"]');
-          if (subtitle) {
-            var currentPadding = window.getComputedStyle(subtitle).padding || '10px 15px';
-            var paddingParts = currentPadding.split(' ');
-            subtitle.style.paddingBottom = value + 'px';
-            subtitle.style.paddingTop = paddingParts[0] || '10px';
-            subtitle.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            subtitle.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
-        if (fieldName.includes('footerPaddingTop')) {
-          var footer = container.querySelector('.ad-footer[data-field="footerBg"]');
-          if (footer) {
-            var currentPadding = window.getComputedStyle(footer).padding || '18px 15px';
-            var paddingParts = currentPadding.split(' ');
-            footer.style.paddingTop = value + 'px';
-            footer.style.paddingBottom = paddingParts[2] || '18px';
-            footer.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            footer.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
-        if (fieldName.includes('footerPaddingBottom')) {
-          var footer = container.querySelector('.ad-footer[data-field="footerBg"]');
-          if (footer) {
-            var currentPadding = window.getComputedStyle(footer).padding || '18px 15px';
-            var paddingParts = currentPadding.split(' ');
-            footer.style.paddingBottom = value + 'px';
-            footer.style.paddingTop = paddingParts[0] || '18px';
-            footer.style.paddingLeft = paddingParts[3] || paddingParts[1] || '15px';
-            footer.style.paddingRight = paddingParts[1] || '15px';
-          }
-          return;
-        }
+        // ========================================================================
+        // PATTERN 2: Padding (works with ANY field containing Padding)
+        // Examples: headerPaddingTop, productCardPadding, sectionPaddingBottom, etc.
+        // ========================================================================
         if (fieldName.includes('Padding')) {
+          // Check for directional padding (Top, Bottom, Left, Right)
+          if (fieldName.includes('PaddingTop') || fieldName.includes('PaddingTop')) {
+            var currentPadding = window.getComputedStyle(element).padding || '0';
+            var paddingParts = currentPadding.split(' ');
+            element.style.paddingTop = value + 'px';
+            // Preserve other padding values
+            if (paddingParts.length >= 2) {
+              element.style.paddingRight = paddingParts[1] || paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 3) {
+              element.style.paddingBottom = paddingParts[2] || paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 4) {
+              element.style.paddingLeft = paddingParts[3] || paddingParts[1] || paddingParts[0] || '0';
+            } else if (paddingParts.length >= 2) {
+              element.style.paddingLeft = paddingParts[1] || paddingParts[0] || '0';
+            }
+            return;
+          }
+          if (fieldName.includes('PaddingBottom')) {
+            var currentPadding = window.getComputedStyle(element).padding || '0';
+            var paddingParts = currentPadding.split(' ');
+            element.style.paddingBottom = value + 'px';
+            if (paddingParts.length >= 1) {
+              element.style.paddingTop = paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 2) {
+              element.style.paddingRight = paddingParts[1] || paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 4) {
+              element.style.paddingLeft = paddingParts[3] || paddingParts[1] || paddingParts[0] || '0';
+            } else if (paddingParts.length >= 2) {
+              element.style.paddingLeft = paddingParts[1] || paddingParts[0] || '0';
+            }
+            return;
+          }
+          if (fieldName.includes('PaddingLeft')) {
+            var currentPadding = window.getComputedStyle(element).padding || '0';
+            var paddingParts = currentPadding.split(' ');
+            element.style.paddingLeft = value + 'px';
+            if (paddingParts.length >= 1) {
+              element.style.paddingTop = paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 2) {
+              element.style.paddingRight = paddingParts[1] || paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 3) {
+              element.style.paddingBottom = paddingParts[2] || paddingParts[0] || '0';
+            }
+            return;
+          }
+          if (fieldName.includes('PaddingRight')) {
+            var currentPadding = window.getComputedStyle(element).padding || '0';
+            var paddingParts = currentPadding.split(' ');
+            element.style.paddingRight = value + 'px';
+            if (paddingParts.length >= 1) {
+              element.style.paddingTop = paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 3) {
+              element.style.paddingBottom = paddingParts[2] || paddingParts[0] || '0';
+            }
+            if (paddingParts.length >= 4) {
+              element.style.paddingLeft = paddingParts[3] || paddingParts[1] || paddingParts[0] || '0';
+            } else if (paddingParts.length >= 2) {
+              element.style.paddingLeft = paddingParts[1] || paddingParts[0] || '0';
+            }
+            return;
+          }
+          // Generic padding (all sides)
           element.style.padding = value + 'px';
           return;
         }
-        // Margin
+        // ========================================================================
+        // PATTERN 3: Margin (works with ANY field containing Margin)
+        // Examples: sectionMargin, cardMarginTop, containerMarginBottom, etc.
+        // ========================================================================
         if (fieldName.includes('Margin')) {
+          // Check for directional margin
+          if (fieldName.includes('MarginTop')) {
+            element.style.marginTop = value + 'px';
+            return;
+          }
+          if (fieldName.includes('MarginBottom')) {
+            element.style.marginBottom = value + 'px';
+            return;
+          }
+          if (fieldName.includes('MarginLeft')) {
+            element.style.marginLeft = value + 'px';
+            return;
+          }
+          if (fieldName.includes('MarginRight')) {
+            element.style.marginRight = value + 'px';
+            return;
+          }
+          // Generic margin (all sides)
           element.style.margin = value + 'px';
           return;
         }
-        // Button sizes - handle data-size attribute (these don't have matching data-field)
-        if (fieldName.includes('playButtonSize') || fieldName.includes('PlayButtonSize')) {
-          var playButtons = container.querySelectorAll('.play-button[data-size="playButtonSize"]');
-          playButtons.forEach(function(btn) {
-            btn.style.width = value + 'px';
-            btn.style.height = value + 'px';
+        // ========================================================================
+        // PATTERN 4: Button Sizes (works with ANY field containing ButtonSize)
+        // Examples: playButtonSize, submitButtonSize, iconButtonSize, etc.
+        // ========================================================================
+        if (fieldName.includes('ButtonSize') || (fieldName.includes('Size') && fieldName.includes('Button'))) {
+          // Extract button name (e.g., "play" from "playButtonSize")
+          var buttonName = fieldName.replace(/ButtonSize$/i, '').replace(/Size$/i, '');
+          var buttonClass = buttonName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+          
+          // Try multiple selectors to find buttons
+          var buttons = container.querySelectorAll(
+            '.' + buttonClass + '-button, ' +
+            '.' + buttonName.toLowerCase() + '-button, ' +
+            '[class*="' + buttonName.toLowerCase() + '"]' +
+            '[class*="button"], ' +
+            '[data-size="' + fieldName + '"], ' +
+            '[data-size="' + buttonName + 'ButtonSize"]'
+          );
+          
+          if (buttons.length === 0) {
+            // Fallback: try to find by data-field with base name
+            var baseName = fieldName.replace(/ButtonSize$/i, '').replace(/Size$/i, '');
+            buttons = container.querySelectorAll('[data-field*="' + baseName + '"]');
+          }
+          
+          buttons.forEach(function(btn) {
+            if (btn.tagName !== 'INPUT' && btn.tagName !== 'TEXTAREA' && btn.tagName !== 'SELECT') {
+              btn.style.width = value + 'px';
+              btn.style.height = value + 'px';
+              
+              // If it's a play button, also update icon size
+              if (buttonName.toLowerCase().includes('play')) {
+                var icon = btn.querySelector('.play-icon, [class*="icon"]');
+                if (icon) {
+                  var iconSize = Math.min(value * 0.25, 22);
+                  icon.style.borderLeftWidth = iconSize + 'px';
+                  icon.style.borderTopWidth = (iconSize * 0.6) + 'px';
+                  icon.style.borderBottomWidth = (iconSize * 0.6) + 'px';
+                }
+              }
+            }
           });
-          // Also update play icon size proportionally
-          var playIcons = container.querySelectorAll('.play-icon');
-          playIcons.forEach(function(icon) {
-            var iconSize = Math.min(value * 0.25, 22);
-            icon.style.borderLeftWidth = iconSize + 'px';
-            icon.style.borderTopWidth = (iconSize * 0.6) + 'px';
-            icon.style.borderBottomWidth = (iconSize * 0.6) + 'px';
+          
+          if (buttons.length > 0) {
+            return;
+          }
+        }
+        
+        // ========================================================================
+        // PATTERN 5: Position Fields (Top, Bottom, Left, Right)
+        // Examples: watermarkTop, logoRight, badgeBottom, iconLeft, etc.
+        // ========================================================================
+        if (fieldName.includes('Top') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          element.style.top = value + 'px';
+          return;
+        }
+        if (fieldName.includes('Bottom') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          element.style.bottom = value + 'px';
+          return;
+        }
+        if (fieldName.includes('Left') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          element.style.left = value + 'px';
+          return;
+        }
+        if (fieldName.includes('Right') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          element.style.right = value + 'px';
+          return;
+        }
+        
+        // ========================================================================
+        // PATTERN 6: Section Heights (works with ANY field containing Height)
+        // Examples: videoHeight, imageHeight, sectionHeight, etc.
+        // ========================================================================
+        if (fieldName.includes('Height') && !fieldName.includes('LineHeight')) {
+          // Try to find section by class name derived from field name
+          var sectionName = fieldName.replace(/Height$/i, '').replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+          var section = container.querySelector('.' + sectionName + '-section, [class*="' + sectionName + '"]') || element;
+          section.style.height = value + 'px';
+          return;
+        }
+        
+        // ========================================================================
+        // PATTERN 7: Seconds/Time Fields (text content for buttons)
+        // Examples: rewindSeconds, forwardSeconds, skipSeconds, etc.
+        // ========================================================================
+        if (fieldName.includes('Seconds')) {
+          // Try to find button or element that should display this
+          var actionName = fieldName.replace(/Seconds$/i, '');
+          var actionClass = actionName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+          
+          // Look for buttons or spans that might contain this value
+          var targetElements = container.querySelectorAll(
+            '[class*="' + actionName.toLowerCase() + '"], ' +
+            '[class*="' + actionClass + '"], ' +
+            'button, .btn, [class*="button"]'
+          );
+          
+          // Update text content in likely elements
+          targetElements.forEach(function(el) {
+            if (el.textContent && (el.textContent.includes('⏩') || el.textContent.includes('⏪') || 
+                el.textContent.match(/\d+/))) {
+              // Replace number in text
+              el.textContent = el.textContent.replace(/\d+/, value);
+            }
           });
-          return;
-        }
-        if (fieldName.includes('controlButtonSize') || fieldName.includes('ControlButtonSize')) {
-          var controlButtons = container.querySelectorAll('.control-btn[data-size="controlButtonSize"]');
-          controlButtons.forEach(function(btn) {
-            btn.style.width = value + 'px';
-            btn.style.height = value + 'px';
-          });
-          return;
-        }
-        // Watermark positions
-        if (fieldName.includes('watermarkTop') || fieldName.includes('WatermarkTop')) {
-          // Find watermark element and update top position
-          var watermark = container.querySelector('.watermark[data-field="watermark"]');
-          if (watermark) {
-            watermark.style.top = value + 'px';
-          }
-          return;
-        }
-        if (fieldName.includes('watermarkRight') || fieldName.includes('WatermarkRight')) {
-          // Find watermark element and update right position
-          var watermark = container.querySelector('.watermark[data-field="watermark"]');
-          if (watermark) {
-            watermark.style.right = value + 'px';
-          }
-          return;
-        }
-        if (fieldName.includes('watermarkSize') || fieldName.includes('WatermarkSize')) {
-          // Find watermark element and update font size
-          var watermark = container.querySelector('.watermark[data-field="watermark"]');
-          if (watermark) {
-            watermark.style.fontSize = value + 'px';
-          }
-          return;
-        }
-        // Video height
-        if (fieldName.includes('videoHeight') || fieldName.includes('VideoHeight')) {
-          // Find video section element
-          var videoSection = container.querySelector('.video-section');
-          if (videoSection) {
-            videoSection.style.height = value + 'px';
-          }
-          return;
-        }
-        // Rewind/Forward seconds (text content)
-        if (fieldName.includes('rewindSeconds') || fieldName.includes('RewindSeconds')) {
-          // Find rewind button and update text
-          var rewindBtn = container.querySelector('.control-btn:first-child span:last-child');
-          if (rewindBtn) {
-            rewindBtn.textContent = value;
-          }
-          return;
-        }
-        if (fieldName.includes('forwardSeconds') || fieldName.includes('ForwardSeconds')) {
-          // Find forward button and update text
-          var forwardBtn = container.querySelector('.control-btn:last-child span:first-child');
-          if (forwardBtn) {
-            forwardBtn.textContent = value;
+          
+          // Also update the element itself if it's a text element
+          if (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA') {
+            element.textContent = value;
           }
           return;
         }
       }
       
-      // Handle file inputs (images, audio) - background images
+      // ========================================================================
+      // PATTERN 9: File Inputs (images, audio) - works with ANY field name
+      // Examples: thumbnail, backgroundImage, productImage, logo, banner, etc.
+      // ========================================================================
       if (inputType === 'file' && value && (value.startsWith('data:') || value.startsWith('blob:'))) {
         // Check if element is a container that should show background image
-        if (element.classList.contains('video-section') || element.classList.contains('image-container') || 
-            fieldName.includes('thumbnail') || fieldName.includes('background') || fieldName.includes('image')) {
+        // Pattern: any field containing: thumbnail, background, image, banner, logo, photo, picture
+        var isBackgroundImage = element.classList.contains('video-section') || 
+                                element.classList.contains('image-container') ||
+                                element.classList.contains('background') ||
+                                fieldName.toLowerCase().includes('thumbnail') || 
+                                fieldName.toLowerCase().includes('background') || 
+                                fieldName.toLowerCase().includes('image') ||
+                                fieldName.toLowerCase().includes('banner') ||
+                                fieldName.toLowerCase().includes('logo') ||
+                                fieldName.toLowerCase().includes('photo') ||
+                                fieldName.toLowerCase().includes('picture') ||
+                                (element.children.length > 0 && element.tagName !== 'IMG');
+        
+        if (isBackgroundImage) {
           element.style.backgroundImage = 'url(' + value + ')';
           element.style.backgroundSize = 'cover';
           element.style.backgroundPosition = 'center';
+          // Remove any file path text
+          if (element.textContent && (element.textContent.includes('fakepath') || 
+              element.textContent.includes('C:\\') || 
+              element.textContent.match(/\.(jpg|jpeg|png|gif|webp)$/i))) {
+            element.textContent = '';
+          }
           return;
         }
         // Otherwise treat as img src
