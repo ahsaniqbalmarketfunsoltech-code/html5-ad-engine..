@@ -106,6 +106,7 @@ var TemplateScanner = {
       });
       
       // Validate: Check if every input has a matching preview element
+      // BUT: Some fields don't need preview elements (style-only fields)
       var validation = {
         valid: true,
         errors: [],
@@ -114,7 +115,43 @@ var TemplateScanner = {
         missingInput: []
       };
       
+      // Fields that don't need preview elements (style-only fields)
+      var styleOnlyFields = [
+        'Size', 'FontSize',           // Font sizes (applied to base element)
+        'Padding', 'PaddingTop', 'PaddingBottom', 'PaddingLeft', 'PaddingRight',
+        'Margin', 'MarginTop', 'MarginBottom', 'MarginLeft', 'MarginRight',
+        'Width', 'Height',             // Dimensions (applied to element)
+        'ButtonSize',                  // Button sizes (applied via data-field)
+        'Top', 'Bottom', 'Left', 'Right'  // Positions (but not Padding/Margin)
+      ];
+      
+      // Check if field is style-only (doesn't need preview element)
+      function isStyleOnlyField(fieldName) {
+        // Check if field name contains any style-only keywords
+        for (var i = 0; i < styleOnlyFields.length; i++) {
+          if (fieldName.includes(styleOnlyFields[i])) {
+            return true;
+          }
+        }
+        // Special cases
+        if (fieldName.includes('watermark') && (fieldName.includes('Top') || fieldName.includes('Right') || fieldName.includes('Size'))) {
+          return true; // watermarkTop, watermarkRight, watermarkSize
+        }
+        if (fieldName.includes('videoHeight')) {
+          return true; // Applied to .video-section
+        }
+        if (fieldName.includes('Seconds')) {
+          return true; // Applied to button text, not preview element
+        }
+        return false;
+      }
+      
       inputElements.forEach(function(fieldName) {
+        // Skip validation for style-only fields
+        if (isStyleOnlyField(fieldName)) {
+          return; // Style-only fields don't need preview elements
+        }
+        
         if (!previewElements.includes(fieldName)) {
           validation.missingPreview.push(fieldName);
           validation.warnings.push('Input field "' + fieldName + '" has no matching preview element');
@@ -124,17 +161,33 @@ var TemplateScanner = {
       previewElements.forEach(function(fieldName) {
         if (!inputElements.includes(fieldName)) {
           // This is OK - preview-only elements are fine (like containers)
-          // But log it for reference
-          if (!fieldName.includes('Bg') && !fieldName.includes('Width') && !fieldName.includes('Height')) {
-            validation.warnings.push('Preview element "' + fieldName + '" has no matching input (might be container)');
+          // But log it for reference if it's not a container field
+          if (!fieldName.includes('Bg') && !fieldName.includes('Width') && !fieldName.includes('Height') &&
+              !fieldName.includes('Container') && !fieldName.includes('Section')) {
+            // Only warn if it's not obviously a container
+            var isContainer = fieldName.toLowerCase().includes('container') || 
+                             fieldName.toLowerCase().includes('section') ||
+                             fieldName.toLowerCase().includes('panel') ||
+                             fieldName.toLowerCase().includes('wrapper');
+            if (!isContainer) {
+              validation.warnings.push('Preview element "' + fieldName + '" has no matching input (might be container)');
+            }
           }
         }
       });
       
-      if (validation.missingPreview.length > 0) {
+      // Only mark as invalid if there are actual errors (not just style-only fields)
+      var actualErrors = validation.missingPreview.filter(function(field) {
+        return !isStyleOnlyField(field);
+      });
+      
+      if (actualErrors.length > 0) {
         validation.valid = false;
-        validation.errors.push('Missing preview elements for ' + validation.missingPreview.length + ' input field(s)');
+        validation.errors.push('Missing preview elements for ' + actualErrors.length + ' input field(s): ' + actualErrors.join(', '));
       }
+      
+      // Update missingPreview to only include actual missing fields
+      validation.missingPreview = actualErrors;
       
       // Check for required structure
       var hasPreviewPanel = doc.querySelector('.preview-panel') !== null;
