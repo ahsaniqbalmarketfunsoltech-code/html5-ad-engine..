@@ -643,13 +643,23 @@ var TemplateEngine = {
             '[class*="' + buttonName.toLowerCase() + '"]' +
             '[class*="button"], ' +
             '[data-size="' + fieldName + '"], ' +
-            '[data-size="' + buttonName + 'ButtonSize"]'
+            '[data-size="' + buttonName + 'ButtonSize"], ' +
+            '[data-field="' + fieldName + '"]'
           );
           
           if (buttons.length === 0) {
             // Fallback: try to find by data-field with base name
             var baseName = fieldName.replace(/ButtonSize$/i, '').replace(/Size$/i, '');
             buttons = container.querySelectorAll('[data-field*="' + baseName + '"]');
+          }
+          
+          // Also try finding by class names like "play-button", "control-button", etc.
+          if (buttons.length === 0) {
+            if (buttonName.toLowerCase().includes('play')) {
+              buttons = container.querySelectorAll('.play-button, .play-btn, [class*="play"][class*="button"]');
+            } else if (buttonName.toLowerCase().includes('control')) {
+              buttons = container.querySelectorAll('.control-btn, .control-button, [class*="control"][class*="button"]');
+            }
           }
           
           buttons.forEach(function(btn) {
@@ -680,18 +690,48 @@ var TemplateEngine = {
         // Examples: watermarkTop, logoRight, badgeBottom, iconLeft, etc.
         // ========================================================================
         if (fieldName.includes('Top') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          // Special handling for watermark: find watermark element by base name
+          if (fieldName.includes('watermark') || fieldName.includes('Watermark')) {
+            var watermark = container.querySelector('.watermark[data-field="watermark"], [class*="watermark"][data-field*="watermark"]');
+            if (watermark) {
+              watermark.style.top = value + 'px';
+              return;
+            }
+          }
           element.style.top = value + 'px';
           return;
         }
         if (fieldName.includes('Bottom') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          if (fieldName.includes('watermark') || fieldName.includes('Watermark')) {
+            var watermark = container.querySelector('.watermark[data-field="watermark"], [class*="watermark"][data-field*="watermark"]');
+            if (watermark) {
+              watermark.style.bottom = value + 'px';
+              return;
+            }
+          }
           element.style.bottom = value + 'px';
           return;
         }
         if (fieldName.includes('Left') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          if (fieldName.includes('watermark') || fieldName.includes('Watermark')) {
+            var watermark = container.querySelector('.watermark[data-field="watermark"], [class*="watermark"][data-field*="watermark"]');
+            if (watermark) {
+              watermark.style.left = value + 'px';
+              return;
+            }
+          }
           element.style.left = value + 'px';
           return;
         }
         if (fieldName.includes('Right') && !fieldName.includes('Padding') && !fieldName.includes('Margin')) {
+          // Special handling for watermark: find watermark element by base name
+          if (fieldName.includes('watermark') || fieldName.includes('Watermark')) {
+            var watermark = container.querySelector('.watermark[data-field="watermark"], [class*="watermark"][data-field*="watermark"]');
+            if (watermark) {
+              watermark.style.right = value + 'px';
+              return;
+            }
+          }
           element.style.right = value + 'px';
           return;
         }
@@ -701,11 +741,30 @@ var TemplateEngine = {
         // Examples: videoHeight, imageHeight, sectionHeight, etc.
         // ========================================================================
         if (fieldName.includes('Height') && !fieldName.includes('LineHeight')) {
+          // Special handling for videoHeight: find video-section
+          if (fieldName.includes('video') || fieldName.includes('Video')) {
+            var videoSection = container.querySelector('.video-section, [class*="video-section"], [class*="video"]');
+            if (videoSection) {
+              videoSection.style.height = value + 'px';
+              return;
+            }
+          }
           // Try to find section by class name derived from field name
           var sectionName = fieldName.replace(/Height$/i, '').replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
           var section = container.querySelector('.' + sectionName + '-section, [class*="' + sectionName + '"]') || element;
           section.style.height = value + 'px';
           return;
+        }
+        
+        // ========================================================================
+        // PATTERN 6B: Watermark Size (special case for watermark font size)
+        // ========================================================================
+        if (fieldName.includes('watermarkSize') || fieldName.includes('WatermarkSize')) {
+          var watermark = container.querySelector('.watermark[data-field="watermark"], [class*="watermark"][data-field*="watermark"]');
+          if (watermark) {
+            watermark.style.fontSize = value + 'px';
+            return;
+          }
         }
         
         // ========================================================================
