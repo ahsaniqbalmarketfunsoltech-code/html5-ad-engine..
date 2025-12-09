@@ -603,74 +603,24 @@ var ExportFunctions = {
    */
   getRenderedHTML: function(translatedData) {
     var container = document.getElementById('templateContainer');
-    if (!container) return '';
+    if (!container) {
+      console.error('❌ Template container not found!');
+      return '';
+    }
     
     var previewPanel = container.querySelector('.preview-panel');
     
     if (!previewPanel) {
+      console.warn('⚠️ Preview panel not found, using container');
       previewPanel = container;
     }
+    
+    console.log('📦 Exporting template. Preview panel found: ' + (previewPanel ? 'YES' : 'NO'));
     
     // Clone the preview panel
     var clone = previewPanel.cloneNode(true);
     
-    // CRITICAL: Copy all computed styles from original to clone to preserve dynamic styles
-    // This ensures all styles applied by updatePreview() are preserved in export
-    function copyComputedStyles(source, target) {
-      if (!source || !target || source.nodeType !== 1 || target.nodeType !== 1) return;
-      
-      var computedStyle = window.getComputedStyle(source);
-      var styleProps = [
-        'width', 'height', 'padding', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
-        'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
-        'backgroundColor', 'color', 'fontSize', 'fontWeight', 'fontFamily',
-        'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat',
-        'top', 'bottom', 'left', 'right', 'position',
-        'display', 'flexDirection', 'alignItems', 'justifyContent',
-        'borderRadius', 'boxShadow', 'overflow', 'textAlign', 'lineHeight'
-      ];
-      
-      styleProps.forEach(function(prop) {
-        try {
-          var value = computedStyle.getPropertyValue(prop);
-          if (value && value !== 'none' && value !== 'normal' && value !== 'auto') {
-            target.style.setProperty(prop, value);
-          }
-        } catch (e) {
-          // Ignore errors for unsupported properties
-        }
-      });
-    }
-    
-    // Copy styles from original elements to cloned elements
-    function copyAllStyles(sourceContainer, targetContainer) {
-      var sourceElements = sourceContainer.querySelectorAll('*');
-      var targetElements = targetContainer.querySelectorAll('*');
-      
-      // Create a map of source elements by data-field or class
-      var sourceMap = {};
-      sourceElements.forEach(function(el) {
-        var key = el.getAttribute('data-field') || el.className || el.tagName;
-        if (key) {
-          if (!sourceMap[key]) sourceMap[key] = [];
-          sourceMap[key].push(el);
-        }
-      });
-      
-      // Match and copy styles
-      targetElements.forEach(function(targetEl, index) {
-        var key = targetEl.getAttribute('data-field') || targetEl.className || targetEl.tagName;
-        if (key && sourceMap[key] && sourceMap[key][0]) {
-          var sourceEl = sourceMap[key][0];
-          copyComputedStyles(sourceEl, targetEl);
-        }
-      });
-    }
-    
-    // Copy all computed styles from original preview to clone
-    copyAllStyles(previewPanel, clone);
-    
-    // Update all data-field elements with translated data
+    // Update all data-field elements with translated data FIRST
     Object.keys(translatedData).forEach(function(fieldName) {
       var elements = clone.querySelectorAll('[data-field="' + fieldName + '"]');
       elements.forEach(function(element) {
@@ -714,6 +664,105 @@ var ExportFunctions = {
         }
       });
     });
+    
+    // CRITICAL: NOW copy all computed styles from original to clone AFTER data is updated
+    // This preserves all dynamic styles applied by updatePreview()
+    function copyElementStyles(sourceEl, targetEl) {
+      if (!sourceEl || !targetEl || sourceEl.nodeType !== 1 || targetEl.nodeType !== 1) return;
+      
+      try {
+        var computedStyle = window.getComputedStyle(sourceEl);
+        var allProps = [];
+        
+        // Get all CSS properties from computed style
+        for (var i = 0; i < document.defaultView.getComputedStyle(sourceEl, null).length; i++) {
+          var prop = document.defaultView.getComputedStyle(sourceEl, null)[i];
+          allProps.push(prop);
+        }
+        
+        // Important style properties to preserve
+        var importantProps = [
+          'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
+          'padding', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
+          'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+          'backgroundColor', 'color', 'fontSize', 'fontWeight', 'fontFamily', 'fontStyle', 'fontVariant',
+          'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat', 'backgroundClip', 'backgroundOrigin',
+          'top', 'bottom', 'left', 'right', 'position', 'zIndex',
+          'display', 'flexDirection', 'alignItems', 'justifyContent', 'flexWrap', 'gap', 'flex', 'flexGrow', 'flexShrink',
+          'borderRadius', 'boxShadow', 'border', 'borderWidth', 'borderColor', 'borderStyle', 'borderTop', 'borderBottom', 'borderLeft', 'borderRight',
+          'overflow', 'overflowX', 'overflowY', 'textAlign', 'lineHeight', 'letterSpacing', 'textDecoration', 'textTransform',
+          'opacity', 'transform', 'transformOrigin', 'transition',
+          'cursor', 'userSelect', 'pointerEvents'
+        ];
+        
+        // Copy important properties
+        importantProps.forEach(function(prop) {
+          try {
+            var value = computedStyle.getPropertyValue(prop);
+            if (value && value !== 'none' && value !== 'normal' && value !== 'auto' && 
+                value !== '0px' && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent' &&
+                !value.includes('initial') && !value.includes('inherit')) {
+              // Convert CSS property name to camelCase for style.setProperty
+              var camelProp = prop.replace(/-([a-z])/g, function(g) { return g[1].toUpperCase(); });
+              targetEl.style[camelProp] = value;
+            }
+          } catch (e) {
+            // Try with setProperty if camelCase fails
+            try {
+              var value = computedStyle.getPropertyValue(prop);
+              if (value && value !== 'none' && value !== 'normal' && value !== 'auto') {
+                targetEl.style.setProperty(prop, value);
+              }
+            } catch (e2) {
+              // Ignore errors
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('Error copying styles for element:', e);
+      }
+    }
+    
+    // Match elements by structure (same position in DOM tree)
+    function copyAllStylesByStructure(sourceContainer, targetContainer) {
+      var sourceElements = [];
+      var targetElements = [];
+      
+      // Collect all elements in order
+      function collectElements(container, array) {
+        array.push(container);
+        var children = container.children;
+        for (var i = 0; i < children.length; i++) {
+          collectElements(children[i], array);
+        }
+      }
+      
+      collectElements(sourceContainer, sourceElements);
+      collectElements(targetContainer, targetElements);
+      
+      // Copy styles element by element (matching by position)
+      var minLength = Math.min(sourceElements.length, targetElements.length);
+      for (var i = 0; i < minLength; i++) {
+        // Only copy if elements are same type and have matching attributes
+        if (sourceElements[i].tagName === targetElements[i].tagName) {
+          var sourceDataField = sourceElements[i].getAttribute('data-field');
+          var targetDataField = targetElements[i].getAttribute('data-field');
+          var sourceClass = sourceElements[i].className;
+          var targetClass = targetElements[i].className;
+          
+          // Match by data-field first, then class, then just copy
+          if ((!sourceDataField && !targetDataField) || 
+              (sourceDataField && targetDataField && sourceDataField === targetDataField) ||
+              (sourceClass && targetClass && sourceClass === targetClass) ||
+              (!sourceDataField && !targetDataField && !sourceClass && !targetClass)) {
+            copyElementStyles(sourceElements[i], targetElements[i]);
+          }
+        }
+      }
+    }
+    
+    // Copy all computed styles from original preview to clone
+    copyAllStylesByStructure(previewPanel, clone);
     
     // Remove any file path text overlays, hex codes, and numeric text from the clone
     var allTextElements = clone.querySelectorAll('*');
@@ -766,9 +815,11 @@ var ExportFunctions = {
     
     // Method 1: Get styles from style elements in the container
     var styleElements = container.querySelectorAll('style');
+    console.log('Found ' + styleElements.length + ' style element(s) in template');
     styleElements.forEach(function(styleEl) {
       if (styleEl.textContent) {
         styles += styleEl.textContent + '\n';
+        console.log('Added style element: ' + styleEl.textContent.length + ' characters');
       }
     });
     
@@ -776,129 +827,146 @@ var ExportFunctions = {
     var containerHTML = container.innerHTML;
     var styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
     var styleMatch;
+    var matchCount = 0;
     while ((styleMatch = styleRegex.exec(containerHTML)) !== null) {
       if (styleMatch[1] && styleMatch[1].trim()) {
         var styleContent = styleMatch[1].trim();
         // Avoid duplicates
         if (styles.indexOf(styleContent) === -1) {
           styles += styleContent + '\n';
+          matchCount++;
         }
       }
+    }
+    if (matchCount > 0) {
+      console.log('Extracted ' + matchCount + ' style block(s) from innerHTML');
     }
     
     // Method 3: Get computed styles from preview elements (fallback)
     if (!styles || styles.trim().length === 0) {
-      console.warn('No styles found in template, using default styles');
+      console.warn('⚠️ No styles found in template! Using minimal default styles.');
       // Add minimal default styles to ensure content displays
       styles = '* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; }';
+    } else {
+      console.log('✅ Total styles extracted: ' + styles.length + ' characters');
     }
     
-    // Get the preview content HTML - preserve exact structure from preview
-    // The clone already has the preview-panel structure, so we get its innerHTML
-    // which contains the actual ad content (ad-container, banner-ad, etc.)
-    
-    // CRITICAL: Ensure all inline styles are preserved in the HTML string
-    // Copy computed styles to inline styles so they're preserved in export
-    var allElements = clone.querySelectorAll('*');
-    var sourceElements = previewPanel.querySelectorAll('*');
-    
-    // Create mapping by data-field or class name
-    var elementMap = {};
-    sourceElements.forEach(function(sourceEl, index) {
-      var key = sourceEl.getAttribute('data-field') || 
-                sourceEl.className || 
-                sourceEl.tagName + '_' + index;
-      if (key) {
-        elementMap[key] = sourceEl;
-      }
-    });
-    
-    // Copy computed styles to inline styles
-    allElements.forEach(function(targetEl, index) {
-      var key = targetEl.getAttribute('data-field') || 
-                targetEl.className || 
-                targetEl.tagName + '_' + index;
+    // CRITICAL: Final pass - ensure all inline styles are set as style attributes
+    // This ensures they're preserved when we get innerHTML/outerHTML
+    var allCloneElements = clone.querySelectorAll('*');
+    allCloneElements.forEach(function(el) {
+      // Get computed style from original element
+      var originalEl = null;
+      var dataField = el.getAttribute('data-field');
+      var className = el.className;
       
-      var sourceEl = elementMap[key];
-      if (sourceEl) {
-        var computedStyle = window.getComputedStyle(sourceEl);
-        var importantStyles = [
-          'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
-          'padding', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
-          'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
-          'backgroundColor', 'color', 'fontSize', 'fontWeight', 'fontFamily', 'fontStyle',
-          'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat', 'backgroundClip',
-          'top', 'bottom', 'left', 'right', 'position', 'zIndex',
-          'display', 'flexDirection', 'alignItems', 'justifyContent', 'flexWrap', 'gap',
-          'borderRadius', 'boxShadow', 'border', 'borderWidth', 'borderColor', 'borderStyle',
-          'overflow', 'overflowX', 'overflowY', 'textAlign', 'lineHeight', 'letterSpacing',
-          'opacity', 'transform', 'transformOrigin'
-        ];
+      if (dataField) {
+        originalEl = previewPanel.querySelector('[data-field="' + dataField + '"]');
+      } else if (className) {
+        originalEl = previewPanel.querySelector('.' + className.split(' ')[0]);
+      }
+      
+      if (originalEl && originalEl !== el) {
+        var computedStyle = window.getComputedStyle(originalEl);
+        var styleString = '';
         
-        var inlineStyles = [];
-        importantStyles.forEach(function(prop) {
+        // Get all important style properties
+        var props = ['width', 'height', 'padding', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
+                     'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+                     'backgroundColor', 'color', 'fontSize', 'fontWeight', 'fontFamily', 'fontStyle',
+                     'backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat',
+                     'top', 'bottom', 'left', 'right', 'position', 'zIndex',
+                     'display', 'flexDirection', 'alignItems', 'justifyContent', 'flexWrap', 'gap',
+                     'borderRadius', 'boxShadow', 'border', 'overflow', 'textAlign', 'lineHeight'];
+        
+        props.forEach(function(prop) {
           try {
             var value = computedStyle.getPropertyValue(prop);
             if (value && value !== 'none' && value !== 'normal' && value !== 'auto' && 
                 value !== '0px' && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent') {
-              // Only add if it's a meaningful value
-              if (prop === 'backgroundImage' && value !== 'none') {
-                inlineStyles.push(prop + ': ' + value);
-              } else if (prop !== 'backgroundImage') {
-                inlineStyles.push(prop + ': ' + value);
-              }
+              styleString += prop + ': ' + value + '; ';
             }
-          } catch (e) {
-            // Ignore errors
-          }
+          } catch (e) {}
         });
         
-        if (inlineStyles.length > 0) {
-          var existingStyle = targetEl.getAttribute('style') || '';
-          var newStyle = existingStyle + (existingStyle ? '; ' : '') + inlineStyles.join('; ');
-          targetEl.setAttribute('style', newStyle);
+        if (styleString) {
+          var existing = el.getAttribute('style') || '';
+          el.setAttribute('style', (existing ? existing + '; ' : '') + styleString);
         }
+      } else if (el.style && el.style.cssText) {
+        // Fallback: use existing style
+        el.setAttribute('style', el.style.cssText);
       }
     });
     
-    // Get final HTML with all inline styles preserved
-    // Extract the actual ad content (remove preview-panel wrapper if present)
-    var adContent = clone.innerHTML;
-    
-    // If clone is preview-panel, get its direct child (the actual ad container)
-    if (clone.classList.contains('preview-panel')) {
-      var adContainer = clone.querySelector('.video-ad-container, .ad-container, [class*="ad"], [class*="banner"]');
-      if (adContainer) {
-        adContent = adContainer.outerHTML;
-      } else {
-        // Get first child that's not a wrapper
-        var firstChild = clone.firstElementChild;
-        if (firstChild && !firstChild.classList.contains('template-wrapper')) {
-          adContent = firstChild.outerHTML;
-        }
-      }
+    // Also set style on clone itself if it's preview-panel
+    if (clone.style && clone.style.cssText) {
+      clone.setAttribute('style', clone.style.cssText);
     }
     
-    // Get ad dimensions from the actual ad container
+    // Get final HTML with all inline styles preserved
+    // Extract the actual ad content (remove preview-panel wrapper if present)
+    var adContent = '';
+    
+    // Find the actual ad container (not the preview-panel wrapper)
+    var adContainer = clone.querySelector('.video-ad-container, .ad-container, [class*="ad-container"], [class*="banner"]');
+    if (adContainer) {
+      // Get the container with all its styles and children
+      adContent = adContainer.outerHTML;
+      console.log('✅ Extracted ad container: ' + adContainer.className + ' (' + adContent.length + ' chars)');
+    } else if (clone.classList.contains('preview-panel')) {
+      // If no specific container found, get first meaningful child
+      var firstChild = clone.firstElementChild;
+      if (firstChild && !firstChild.classList.contains('template-wrapper') && 
+          !firstChild.classList.contains('input-panel')) {
+        adContent = firstChild.outerHTML;
+        console.log('✅ Extracted first child: ' + firstChild.className + ' (' + adContent.length + ' chars)');
+      } else {
+        // Fallback: get all children HTML
+        adContent = clone.innerHTML;
+        console.log('⚠️ Using clone innerHTML as fallback (' + adContent.length + ' chars)');
+      }
+    } else {
+      // Clone is already the content
+      adContent = clone.innerHTML;
+      console.log('✅ Using clone innerHTML directly (' + adContent.length + ' chars)');
+    }
+    
+    // Verify adContent has content
+    if (!adContent || adContent.trim().length < 100) {
+      console.error('❌ ERROR: Ad content is too short! Length: ' + (adContent ? adContent.length : 0));
+      console.log('Clone HTML:', clone.innerHTML.substring(0, 500));
+    }
+    
+    // Get ad dimensions from the actual ad container in the original preview
     var adContainerElement = previewPanel.querySelector('.video-ad-container, .ad-container, [class*="ad-container"]');
     var adWidth = '320px';
     var adHeight = 'auto';
     
     if (adContainerElement) {
       var computedStyle = window.getComputedStyle(adContainerElement);
-      adWidth = computedStyle.width || '320px';
+      adWidth = computedStyle.width || adContainerElement.style.width || '320px';
+      
       // Calculate total height from all sections
       var totalHeight = 0;
       var sections = adContainerElement.children;
       for (var i = 0; i < sections.length; i++) {
-        var sectionStyle = window.getComputedStyle(sections[i]);
-        totalHeight += sections[i].offsetHeight || parseInt(sectionStyle.height) || 0;
+        var sectionComputed = window.getComputedStyle(sections[i]);
+        var sectionHeight = sections[i].offsetHeight || 
+                           parseInt(sectionComputed.height) || 
+                           parseInt(sectionComputed.minHeight) || 0;
+        totalHeight += sectionHeight;
       }
+      
       if (totalHeight > 0) {
         adHeight = totalHeight + 'px';
       } else {
-        adHeight = computedStyle.height || '480px';
+        adHeight = computedStyle.height || computedStyle.minHeight || '480px';
       }
+    } else {
+      // Fallback: calculate from preview panel
+      var panelStyle = window.getComputedStyle(previewPanel);
+      adHeight = panelStyle.height || '480px';
     }
     
     // Create complete HTML document with proper dimensions
