@@ -1253,7 +1253,7 @@ var ExportFunctions = {
    * Calculate estimated time for ZIP generation
    */
   calculateTimeEstimate: function (languages) {
-    var sourceLang = 'en';
+    var sourceLang = 'auto'; // Auto-detect source language
     var languagesToTranslate = languages.filter(function (lang) { return lang !== sourceLang; });
 
     // Time estimates (in seconds) - optimized for faster processing
@@ -1305,7 +1305,7 @@ var ExportFunctions = {
       }
 
       var startTime = Date.now();
-      var sourceLang = 'en';
+      var sourceLang = 'auto'; // Auto-detect source language
       var masterZip = new JSZip();
 
       // Show progress indicator
@@ -1522,7 +1522,7 @@ var ExportFunctions = {
    * Calculate estimated time for images generation
    */
   calculateImagesTimeEstimate: function (languages) {
-    var sourceLang = 'en';
+    var sourceLang = 'auto'; // Auto-detect source language
     var languagesToTranslate = languages.filter(function (lang) { return lang !== sourceLang; });
 
     // Time estimates (in seconds) - optimized
@@ -1545,7 +1545,7 @@ var ExportFunctions = {
    * Takes into account translation, rendering, and video encoding time
    */
   calculateVideoTimeEstimate: function (languages, audioDuration) {
-    var sourceLang = 'en';
+    var sourceLang = 'auto'; // Auto-detect source language
     var languagesToTranslate = languages.filter(function (lang) { return lang !== sourceLang; });
 
     // Time estimates (in seconds)
@@ -1590,7 +1590,7 @@ var ExportFunctions = {
       }
 
       var startTime = Date.now();
-      var sourceLang = 'en';
+      var sourceLang = 'auto'; // Auto-detect source language
       var masterZip = new JSZip();
       var sizes = [
         { name: '1200x1200', width: 1200, height: 1200 },
@@ -2056,7 +2056,7 @@ var ExportFunctions = {
       }
 
       var startTime = Date.now();
-      var sourceLang = 'en';
+      var sourceLang = 'auto'; // Auto-detect source language
       var sizes = [
         { name: '1200x1200', width: 1200, height: 1200 },
         { name: '1200x1500', width: 1200, height: 1500 },
