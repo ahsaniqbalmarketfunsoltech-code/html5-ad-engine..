@@ -1,4 +1,21 @@
+# Template Creation Guide (SOP)
 
+> **🚀 Quick Start:** Want to add a new template? See [HOW_TO_ADD_TEMPLATE.md](HOW_TO_ADD_TEMPLATE.md) for the super simple 3-step process!
+
+---
+
+## 🎯 TL;DR - Adding a New Template
+
+1. **Copy** an existing template (e.g., `template1.html`)
+2. **Rename** to `template[NEXT_NUMBER].html` (e.g., `template6.html`)
+3. **Save** to `/templates/` folder
+4. **Refresh** browser (F5)
+
+**Done!** ✅ Your template appears in the dropdown automatically.
+
+**No configuration needed!** The system auto-discovers all templates.
+
+---
 
 ## 📋 Requirements for New Templates
 
